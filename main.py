@@ -1,10 +1,10 @@
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils import data
-from torchvision import datasets, transforms, models
 
-
+from ssd.model import SSD300
+from data.dataset import Dataset
+from lib.augmentation import Augmentation
 from utils import seed
 from utils.executable import Executable
 from utils.arguments import Arguments
@@ -13,27 +13,22 @@ from utils.arguments import Arguments
 def main(args: Arguments.parse.Namespace):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dataset = datasets.ImageFolder(args.dataset, transform=transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.2919, 0.2633, 0.2623], [0.1993, 0.2028, 0.1999])
-    ]))
-    loader = data.DataLoader(dataset, batch_size=args.batch, shuffle=True, num_workers=4)
+    dataset = Dataset.get(args.type)(args.dataset, transform=Augmentation.get(args.type)())
 
-    model = models.resnet101(pretrained=True)
-    model.fc = nn.Linear(model.fc.in_features, len(dataset.classes))
+    model = SSD300(dataset.num_classes)
 
     executor = Executable(args.command)
+    model = executor.init(model, device, path=args.model)
 
-    executor.init(model, device, path=args.model)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
+                          weight_decay=args.decay)
+    criterion = SSD300.LOSS(dataset.num_classes, device=device)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
+                             shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
 
     model, acc = executor(
-        model, loader, criterion, optimizer, scheduler, device=device, num_epochs=args.epoch)
+        model, loader, criterion, optimizer, device=device, num_epochs=args.epoch)
 
     if executor.command == 'train':
         torch.save(model.state_dict(), args.output)

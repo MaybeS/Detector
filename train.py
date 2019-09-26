@@ -1,62 +1,44 @@
-import copy
-
 import torch
-from torch.utils import data
+from torch.autograd import Variable
+import torch.nn as nn
+import torch.backends.cudnn as cudnn
 
 
-def init(model, device, *args, **kwargs):
-    model = model.to(device)
-    model.train()
-    return model
+def init(model, device, path: str = None):
+
+    if device.type == 'cuda':
+        model = nn.DataParallel(model)
+        torch.backends.cudnn.benchmark = True
+
+    if path is not None:
+        model.load(torch.load(path, map_location=lambda s, l: s))
+
+    return model.to(device).train()
 
 
-def train(model, loader: data.DataLoader, criterion, optimizer, scheduler,
-          device=None, num_epochs=32):
+def train(model, loader, criterion, optimizer, num_epochs, start_epoch:int = 0, device=None):
+    iterator = iter(loader)
 
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    for iteration in range(start_epoch, num_epochs):
+        try:
+            images, targets = next(iterator)
+        except StopIteration:
+            iterator = iter(loader)
+            images, targets = next(iterator)
 
-    best_model_wts = copy.deepcopy(model.state_dict())
-    best_acc = .0
+        images = Variable(images.to(device), requires_grad=False)
+        targets = [Variable(target, requires_grad=False) for target in targets]
 
-    for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-        print('-' * 10)
+        output = model(images)
 
-        running_loss, running_corrects = .0, 0
+        optimizer.zero_grad()
+        loc_loss, conf_loss = criterion(output, targets)
+        loss = loc_loss + conf_loss
+        loss.backward()
+        optimizer.step()
 
-        # Iterate over data.
-        for inputs, labels in loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+    return model, None
 
-            # zero the parameter gradients
-            optimizer.zero_grad()
 
-            # forward
-            # track history if only in train
-            with torch.set_grad_enabled(True):
-                outputs = model(inputs)
-                _, preds = torch.max(outputs, 1)
-                loss = criterion(outputs, labels)
-
-                # backward + optimize only if in training phase
-                loss.backward()
-                optimizer.step()
-
-            # statistics
-            running_loss += loss.item() * inputs.size(0)
-            running_corrects += torch.sum(preds == labels.data)
-
-        scheduler.step()
-
-        epoch_loss = running_loss / len(loader.dataset)
-        epoch_acc = running_corrects.double() / len(loader.dataset)
-
-        print(f'Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
-
-    print(f'Best val Acc: {best_acc:4f}')
-
-    # load best model weights
-    model.load_state_dict(best_model_wts)
-
-    return model, best_acc
+if __name__ == '__main__':
+    train()
