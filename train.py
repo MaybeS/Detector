@@ -20,9 +20,6 @@ def init(model: nn.Module, device: torch.device,
         model = nn.DataParallel(model)
         torch.backends.cudnn.benchmark = True
 
-    model.extras.load_state_dict(torch.load('../ssd.pytorch/extras.pth'))
-    model.loc.load_state_dict(torch.load('../ssd.pytorch/loc.pth'))
-    model.conf.load_state_dict(torch.load('../ssd.pytorch/conf.pth'))
     model.to(device).train()
 
     return model
