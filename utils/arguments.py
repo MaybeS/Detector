@@ -35,7 +35,7 @@ class Arguments:
                             help="Path to model")
         parser.add_argument('--batch', required=False, default=32, type=int,
                             help="batch")
-        parser.add_argument('--lr', required=False, default=.01, type=float,
+        parser.add_argument('--lr', required=False, default=.001, type=float,
                             help="learning rate")
         parser.add_argument('--momentum', required=False, default=.9, type=float,
                             help="momentum")
