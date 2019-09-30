@@ -39,12 +39,12 @@ class SSD(nn.Module):
         self.num_classes = num_classes
         self.cfg = cfg or {}
 
-        self.priors = Variable(PriorBox(**self.cfg).forward(), requires_grad=False)
+        self.priorbox = PriorBox(**self.cfg)
+        self.priors = Variable(self.priorbox.forward(), volatile=True)
 
         self.features = backbone
-        self.extras = nn.ModuleList(extras)
         self.L2Norm = L2Norm(512, 20)
-
+        self.extras = nn.ModuleList(extras)
         self.loc = nn.ModuleList(loc)
         self.conf = nn.ModuleList(conf)
 
@@ -83,14 +83,14 @@ class SSD(nn.Module):
                     2: localization layers, Shape: [batch,num_priors*4]
                     3: priorbox layers, Shape: [2,num_priors*4]
         """
-        forward = lambda param, layer: layer(param)
+        f = lambda param, layer: layer(param)
 
         sources = list()
 
-        x = reduce(forward, [x, *self.features[:23]])
+        x = reduce(f, [x, *self.features[:23]])
         sources.append(self.L2Norm(x))
 
-        x = reduce(forward, [x, *self.features[23:]])
+        x = reduce(f, [x, *self.features[23:]])
         sources.append(x)
 
         for i, layer in enumerate(self.extras):
@@ -110,7 +110,7 @@ class SSD(nn.Module):
         output = (
             loc.view(loc.size(0), -1, 4),
             conf.view(conf.size(0), -1, self.num_classes),
-            self.priors
+            self.priors.to(x.device),
         )
 
         if not self.training:
@@ -121,17 +121,16 @@ class SSD(nn.Module):
     @staticmethod
     def initializer(m):
         if isinstance(m, nn.Conv2d):
-            nn.init.xavier_uniform(m.weight.data)
+            nn.init.xavier_uniform_(m.weight.data)
             m.bias.data.zero_()
 
     def load(self, state_dict: dict = None):
-        if state_dict is None:
-            self.extras.apply(self.initializer)
-            self.loc.apply(self.initializer)
-            self.conf.apply(self.initializer)
+        self.extras.apply(self.initializer)
+        self.loc.apply(self.initializer)
+        self.conf.apply(self.initializer)
 
-        else:
-            self.load_state_dict(state_dict)
+        if state_dict is not None:
+            self.features.load_state_dict(state_dict)
 
 
 class SSD300(SSD):
@@ -161,9 +160,10 @@ class SSD300(SSD):
     @classmethod
     def extra(cls, in_channels: int = 1024) \
             -> Iterable[nn.Module]:
-        for i, (feature, kernel) in enumerate(zip(cls.EXTRAS, cycle((1, 3)))):
+        kernel = iter(cycle((1, 3)))
+        for i, feature in enumerate(cls.EXTRAS):
             if in_channels != 'S':
-                yield nn.Conv2d(in_channels, cls.EXTRAS[i + 1] if feature == 'S' else feature, kernel_size=kernel,
+                yield nn.Conv2d(in_channels, cls.EXTRAS[i + 1] if feature == 'S' else feature, kernel_size=next(kernel),
                                 stride=(2 if feature == 'S' else 1), padding=(1 if feature == 'S' else 0))
             in_channels = feature
 

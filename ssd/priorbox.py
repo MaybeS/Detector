@@ -23,8 +23,8 @@ class PriorBox(object):
         self.num_priors = len(self.aspect_ratios)
         self.variance = variance or [.1, .2]
         self.feature_maps = feature_maps or [38, 19, 10, 5, 3, 1]
-        self.min_sizes = min_sizes or [30, 60, 111, 162, 213, 264]
-        self.max_sizes = max_sizes or [60, 111, 162, 213, 264, 315]
+        self.min_sizes = min_sizes or [21, 45, 99, 153, 207, 261]
+        self.max_sizes = max_sizes or [45, 99, 153, 207, 261, 315]
         self.steps = steps or [8, 16, 32, 64, 100, 300]
         self.clip = clip
 
