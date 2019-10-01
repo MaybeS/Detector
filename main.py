@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 from torch.utils import data
 
-from ssd.model import SSD300
+from ssd import SSD300, Loss
 from data.dataset import Dataset
 from lib.augmentation import Augmentation
 from utils import seed
@@ -26,7 +26,7 @@ def main(args: Arguments.parse.Namespace):
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr,
                           momentum=args.momentum, weight_decay=args.decay)
-    criterion = SSD300.LOSS(dataset.num_classes, device=device)
+    criterion = Loss(dataset.num_classes, device=device)
 
     loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)

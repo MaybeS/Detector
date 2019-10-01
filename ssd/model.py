@@ -40,7 +40,7 @@ class SSD(nn.Module):
         self.cfg = cfg or {}
 
         self.priorbox = PriorBox(**self.cfg)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
+        self.priors = Variable(self.priorbox.forward(), requires_grad=False)
 
         self.features = backbone
         self.L2Norm = L2Norm(512, 20)

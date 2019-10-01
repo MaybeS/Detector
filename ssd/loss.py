@@ -80,11 +80,8 @@ class Loss(nn.Module):
 
             match(self.threshold, truths, defaults, self.variance, labels, loc_t, conf_t, idx)
 
-        loc_t, conf_t = loc_t.to(self.device), conf_t.to(self.device)
-
-        # wrap targets
-        loc_t = Variable(loc_t, requires_grad=False)
-        conf_t = Variable(conf_t, requires_grad=False)
+        loc_t = Variable(loc_t.to(self.device), requires_grad=False)
+        conf_t = Variable(conf_t.to(self.device), requires_grad=False)
 
         pos = conf_t > 0
 
@@ -92,7 +89,7 @@ class Loss(nn.Module):
         # Shape: [batch,num_priors,4]
         pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)
         loc_p, loc_t = loc_data[pos_idx].view(-1, 4), loc_t[pos_idx].view(-1, 4)
-        loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
+        loss_l = F.smooth_l1_loss(loc_p, loc_t, reduction='sum')
 
         # Compute max conf across batch for hard negative mining
         batch_conf = conf_data.view(-1, self.num_classes)
@@ -114,7 +111,7 @@ class Loss(nn.Module):
 
         conf_p = conf_data[(pos_idx+neg_idx).gt(0)].view(-1, self.num_classes)
         targets_weighted = conf_t[(pos+neg).gt(0)]
-        loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False)
+        loss_c = F.cross_entropy(conf_p, targets_weighted, reduction='sum')
 
         N = num_pos.data.sum().double()
 

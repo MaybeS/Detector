@@ -38,8 +38,8 @@ def train(model: nn.Module, loader: data.DataLoader, criterion, optimizer,
                 iterator = iter(loader)
                 images, targets = next(iterator)
 
-            images = Variable(images.to(device), volatile=True)
-            targets = [Variable(target.to(device), volatile=True) for target in targets]
+            images = Variable(images.to(device), requires_grad=False)
+            targets = [Variable(target.to(device), requires_grad=False) for target in targets]
 
             output = model(images)
             optimizer.zero_grad()
