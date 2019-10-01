@@ -114,7 +114,7 @@ class SSD(nn.Module):
         )
 
         if not self.training:
-            output = self.detect(*output)
+            output = self.detect(*output).to(x.device)
 
         return output
 
