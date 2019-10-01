@@ -1,3 +1,4 @@
+from typing import Tuple
 import types
 
 import cv2
@@ -400,7 +401,8 @@ class PhotometricDistort(object):
 
 
 class Augmentation(metaclass=Beholder):
-    pass
+    def __call__(self):
+        pass
 
 
 class SSD(Augmentation):
@@ -421,6 +423,19 @@ class SSD(Augmentation):
 
     def __call__(self, img, boxes, labels):
         return self.augment(img, boxes, labels)
+
+
+class Base(Augmentation):
+    def __init__(self, size: int = 300, mean: Tuple[int] = (104, 117, 123)):
+        self.size = size
+        self.mean = np.array(mean, dtype=np.float32)
+
+    def __call__(self, image: np.ndarray, boxes=None, labels=None):
+        image = cv2.resize(image, (self.size, self.size)).astype(np.float32)
+        image -= self.mean
+        image = image.astype(np.float32)
+
+        return image, boxes, labels
 
 
 class Amano(Augmentation):

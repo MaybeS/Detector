@@ -31,7 +31,10 @@ class Dataset(metaclass=Beholder):
     def __len__(self):
         return 0
 
-    def pull_item(self, index: int):
+    def pull_name(self, index: int) -> str:
+        pass
+
+    def pull_item(self, index: int) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
     def pull_image(self, index: int) -> np.ndarray:

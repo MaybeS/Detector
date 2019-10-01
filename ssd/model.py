@@ -57,12 +57,12 @@ class SSD(nn.Module):
         return self.detector(loc, F.softmax(conf, dim=-1), prior)
 
     def eval(self):
-        self.detector = Detector(self.num_classes)
         super(SSD, self).eval()
+        self.detector = Detector(self.num_classes)
 
     def train(self, mode=True):
+        super(SSD, self).train(mode)
         self.detector = None
-        super(SSD, self).train()
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -125,12 +125,16 @@ class SSD(nn.Module):
             m.bias.data.zero_()
 
     def load(self, state_dict: dict = None):
-        self.extras.apply(self.initializer)
-        self.loc.apply(self.initializer)
-        self.conf.apply(self.initializer)
+        try:
+            self.load_state_dict(state_dict)
 
-        if state_dict is not None:
-            self.features.load_state_dict(state_dict)
+        except RuntimeError:
+            self.extras.apply(self.initializer)
+            self.loc.apply(self.initializer)
+            self.conf.apply(self.initializer)
+
+            if state_dict is not None:
+                self.features.load_state_dict(state_dict)
 
 
 class SSD300(SSD):
@@ -142,6 +146,7 @@ class SSD300(SSD):
 
     def __init__(self, num_classes: int, cfg=None):
         backbone = models.vgg16(pretrained=True).features[:-1]
+        backbone[16].ceil_mode = True
 
         for i, layer in enumerate([
             nn.MaxPool2d(kernel_size=3, stride=1, padding=1),

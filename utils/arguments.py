@@ -33,6 +33,8 @@ class Arguments:
 
         parser.add_argument('--model', required=False, default='weights/vgg16_reducedfc.pth', type=str,
                             help="Path to model")
+        parser.add_argument('--thresh', required=False, default=.6, type=float,
+                            help="threshold")
         parser.add_argument('--batch', required=False, default=32, type=int,
                             help="batch")
         parser.add_argument('--lr', required=False, default=.001, type=float,

@@ -7,6 +7,7 @@ from torch.utils import data
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 
+from data.dataset import Dataset
 from utils.arguments import Arguments
 
 
@@ -15,19 +16,23 @@ def init(model: nn.Module, device: torch.device,
         -> nn.Module:
 
     model.load(torch.load(args.model, map_location=lambda s, l: s))
+    model.train()
 
     if device.type == 'cuda':
         model = nn.DataParallel(model)
+        model.state_dict = model.module.state_dict
         torch.backends.cudnn.benchmark = True
 
-    model.to(device).train()
+    model.to(device)
 
     return model
 
 
-def train(model: nn.Module, loader: data.DataLoader, criterion, optimizer,
-          device: torch.device = None, args: Arguments.parse.Namespace = None) \
+def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
+          device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
         -> None:
+    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
+                             shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
     iterator = iter(loader)
 
     with tqdm(total=args.epoch) as tq:

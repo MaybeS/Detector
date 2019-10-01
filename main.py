@@ -2,7 +2,6 @@ from pathlib import Path
 
 import torch
 import torch.optim as optim
-from torch.utils import data
 
 from ssd import SSD300, Loss
 from data.dataset import Dataset
@@ -28,10 +27,10 @@ def main(args: Arguments.parse.Namespace):
                           momentum=args.momentum, weight_decay=args.decay)
     criterion = Loss(dataset.num_classes, device=device)
 
-    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
-                             shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
-
-    executor(model, loader, criterion, optimizer, device=device, args=args)
+    executor(model, dataset,
+             criterion=criterion, optimizer=optimizer,  # train args
+             transform=Augmentation.get('base')(),      # test args
+             device=device, args=args)
 
 
 if __name__ == '__main__':

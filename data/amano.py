@@ -81,6 +81,9 @@ class Amano(data.Dataset, Dataset):
     def __len__(self):
         return len(self.images)
 
+    def pull_name(self, index: int):
+        return self.images[index].stem
+
     def pull_item(self, index: int):
         fail = 0
         while True:

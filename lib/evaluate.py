@@ -1,12 +1,6 @@
 from typing import Tuple, Union
-import argparse
-from pathlib import Path
 
 import numpy as np
-import pandas as pd
-from tqdm import tqdm
-
-from data.amano import AmanoDataset
 
 
 def compute_iou(box, boxes, box_area, boxes_area):
@@ -110,67 +104,3 @@ class Evaluator:
     def dump(self) \
             -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return self.mAP, self.precision, self.recall
-
-
-def main():
-    parser = argparse.ArgumentParser(description='')
-    train_set = parser.add_mutually_exclusive_group()
-    parser.add_argument('--dataset', default='', required=True, type=str)
-    parser.add_argument('--dest', default='./eval', required=False, type=str)
-
-    args = parser.parse_args()
-
-    evaluator = Evaluator(n_class=2)
-
-    results = sorted(Path(args.dest).glob('*.txt'))
-    testset = AmanoDataset(root=args.dataset)
-
-    for index in tqdm(range(len(testset))):
-        try:
-            detection = pd.read_csv(str(results[index]), header=None).values
-        except:
-            continue
-
-        boxes, labels = testset.pull_anno(index)
-
-        if not boxes.size:
-            continue
-
-        evaluator.update((
-            detection[:, 1].astype(np.int),
-            detection[:, 2].astype(np.float32),
-            detection[:, 3:].astype(np.float32),
-            None,
-        ), (
-            np.ones(np.size(boxes, 0), dtype=np.int),
-            boxes.astype(np.float32),
-            None,
-        ))
-
-    aps, precisions, recalls = [], [], []
-    gt_counts, pd_counts = 0, 0
-
-    for klass, (ap, precision, recall) in enumerate(zip(*evaluator.dump())):
-        # Skip BG class
-        if klass == 0:
-            continue
-
-        print(f'AP of {klass}: {ap}')
-        print(f'\tPrecision: {precision}, Recall: {recall}')
-        print(f'{klass}: Ground Truths: {evaluator.gt_counts[klass]} / Predictions: {evaluator.pd_counts[klass]}')
-
-        aps.append(ap)
-        precisions.append(precision)
-        recalls.append(recall)
-        gt_counts += evaluator.gt_counts[klass]
-        pd_counts += evaluator.pd_counts[klass]
-
-    print(f'mAP total: {np.mean(aps)}')
-    print(f'\tPrecision: {np.mean(precisions)}, Recall: {np.mean(recalls)}')
-    print(f'Ground Truths: {gt_counts} / Predictions: {pd_counts}')
-
-    return np.mean(aps), np.mean(precisions), np.mean(recalls), gt_counts, pd_counts
-
-
-if __name__ == "__main__":
-    main()
