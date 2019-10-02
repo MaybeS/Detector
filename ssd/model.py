@@ -10,7 +10,7 @@ from torchvision import models
 
 from .detector import Detector, DetectorArgument
 from .priorbox import PriorBox
-from .layers import L2Norm
+from .layers import L2Norm, Warping
 from .loss import Loss
 
 
@@ -100,6 +100,8 @@ class SSD(nn.Module):
             x = F.relu(layer(x), inplace=True)
             if i % 2 == 1:
                 sources.append(x)
+
+        sources = list(map(lambda s: Warping.forward(s), sources))
 
         def refine(source: torch.Tensor):
             return source.permute(0, 2, 3, 1).contiguous()
