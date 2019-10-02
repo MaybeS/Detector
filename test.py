@@ -49,7 +49,7 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
         except (FileNotFoundError, pd.errors.EmptyDataError) as e:
             image = dataset.pull_image(index)
             scale = torch.Tensor([image.shape[1], image.shape[0],
-                                  image.shape[1], image.shape[0]])
+                                  image.shape[1], image.shape[0]]).to(device)
 
             image = Variable(torch.from_numpy(transform(image)[0]).permute(2, 0, 1).unsqueeze(0)).to(device)
 
@@ -78,9 +78,9 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
             continue
 
         evaluator.update((
-            detection[:, 1].astype(np.int),
-            detection[:, 2].astype(np.float32),
-            detection[:, 3:].astype(np.float32),
+            detection[:, 0].astype(np.int),
+            detection[:, 1].astype(np.float32),
+            detection[:, 2:].astype(np.float32),
             None,
         ), (
             np.ones(np.size(gt_boxes, 0), dtype=np.int),

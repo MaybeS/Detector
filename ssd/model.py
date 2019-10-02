@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision import models
 
-from .detector import Detector
+from .detector import Detector, DetectorArgument
 from .priorbox import PriorBox
 from .layers import L2Norm
 from .loss import Loss
@@ -54,11 +54,14 @@ class SSD(nn.Module):
         if self.detector is None:
             raise Exception('use detect after enable eval mode')
 
-        return self.detector(loc, F.softmax(conf, dim=-1), prior)
+        with torch.no_grad():
+            result = Detector.forward(loc, F.softmax(conf, dim=-1), prior, self.detector)
+
+        return result
 
     def eval(self):
         super(SSD, self).eval()
-        self.detector = Detector(self.num_classes)
+        self.detector = DetectorArgument(self.num_classes)
 
     def train(self, mode=True):
         super(SSD, self).train(mode)
