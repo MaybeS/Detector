@@ -74,7 +74,7 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
 
             pd.DataFrame(detection).to_csv(str(destination), header=None)
 
-        if not detection.size:
+        if not detection.size or not gt_boxes.size:
             continue
 
         evaluator.update((
