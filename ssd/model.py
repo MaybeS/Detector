@@ -8,10 +8,9 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision import models
 
-from .detector import Detector, DetectorArgument
+from .detector import Detector
 from .priorbox import PriorBox
 from .layers import L2Norm, Warping
-from .loss import Loss
 
 
 class SSD(nn.Module):
@@ -31,9 +30,9 @@ class SSD(nn.Module):
         extras: extra layers that feed to multibox loc and conf layers
         head: "multibox head" consists of loc and conf conv layers
     """
-    loss = Loss
 
-    def __init__(self, size, backbone, extras, loc, conf, num_classes: int, cfg=None):
+    def __init__(self, size, backbone, extras, loc, conf, num_classes: int, cfg=None,
+                 warping: bool=False):
         super(SSD, self).__init__()
         self.size = size
         self.num_classes = num_classes
@@ -48,26 +47,27 @@ class SSD(nn.Module):
         self.loc = nn.ModuleList(loc)
         self.conf = nn.ModuleList(conf)
 
-        self.detector = None
+        self.warping = warping
 
-    def detect(self, loc, conf, prior):
-        if self.detector is None:
-            raise Exception('use detect after enable eval mode')
+    def detect(self, loc: torch.Tensor, conf: torch.Tensor, prior: torch.Tensor) \
+            -> torch.Tensor:
+        if self.training:
+            raise RuntimeError('use detect after enable eval mode')
 
         with torch.no_grad():
-            result = Detector.forward(loc, F.softmax(conf, dim=-1), prior, self.detector)
+            result = Detector.forward(loc, F.softmax(conf, dim=-1), prior)
 
         return result
 
     def eval(self):
         super(SSD, self).eval()
-        self.detector = DetectorArgument(self.num_classes)
+        Detector.init(self.num_classes)
 
-    def train(self, mode=True):
+    def train(self, mode: bool = True):
         super(SSD, self).train(mode)
-        self.detector = None
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) \
+            -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         """Applies network layers and ops on input image(s) x.
 
         Args:
@@ -78,13 +78,13 @@ class SSD(nn.Module):
             test:
                 Variable(tensor) of output class label predictions,
                 confidence score, and corresponding location predictions for
-                each object detected. Shape: [batch,topk,7]
+                each object detected. Shape: [batch, topk, 7]
 
             train:
                 list of concat outputs from:
-                    1: confidence layers, Shape: [batch*num_priors,num_classes]
-                    2: localization layers, Shape: [batch,num_priors*4]
-                    3: priorbox layers, Shape: [2,num_priors*4]
+                    1: confidence layers, Shape: [batch*num_priors, num_classes]
+                    2: localization layers, Shape: [batch, num_priors*4]
+                    3: priorbox layers, Shape: [2, num_priors*4]
         """
         f = lambda param, layer: layer(param)
 
@@ -101,7 +101,8 @@ class SSD(nn.Module):
             if i % 2 == 1:
                 sources.append(x)
 
-        sources = list(map(lambda s: Warping.forward(s), sources))
+        if self.warping:
+            sources = list(map(lambda s: Warping.forward(s), sources))
 
         def refine(source: torch.Tensor):
             return source.permute(0, 2, 3, 1).contiguous()
@@ -130,26 +131,29 @@ class SSD(nn.Module):
             m.bias.data.zero_()
 
     def load(self, state_dict: dict = None):
-        try:
-            self.load_state_dict(state_dict)
-
-        except RuntimeError:
+        if state_dict is None:
             self.extras.apply(self.initializer)
             self.loc.apply(self.initializer)
             self.conf.apply(self.initializer)
 
-            if state_dict is not None:
-                self.features.load_state_dict(state_dict)
+        else:
+            try:
+                self.load_state_dict(state_dict)
+
+            # Legacy handling
+            except RuntimeError:
+                self.load_state_dict(state_dict.__class__({
+                    key.replace('vgg', 'features'): value for key, value in state_dict.items()
+                }))
 
 
 class SSD300(SSD):
-    LOSS = Loss
 
     SIZE = 300
     EXTRAS = [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256]
     BOXES = [4, 6, 6, 6, 4, 4]
 
-    def __init__(self, num_classes: int, cfg=None):
+    def __init__(self, num_classes: int, cfg=None, **kwargs):
         backbone = models.vgg16(pretrained=True).features[:-1]
         backbone[16].ceil_mode = True
 
@@ -165,7 +169,7 @@ class SSD300(SSD):
         extras = list(self.extra(backbone[-2].in_channels))
         loc, conf = self.head(backbone, extras, num_classes)
 
-        super(SSD300, self).__init__(self.SIZE, backbone, extras, loc, conf, num_classes, cfg)
+        super(SSD300, self).__init__(self.SIZE, backbone, extras, loc, conf, num_classes, cfg, **kwargs)
 
     @classmethod
     def extra(cls, in_channels: int = 1024) \
