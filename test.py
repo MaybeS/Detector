@@ -44,9 +44,11 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
         destination = Path(dest).joinpath(f'{name}.txt')
 
         try:
+            if args.overwrite:
+                raise AssertionError('Force overwrite enabled')
             detection = pd.read_csv(str(destination), header=None).values
 
-        except (FileNotFoundError, pd.errors.EmptyDataError) as e:
+        except (FileNotFoundError, AssertionError, pd.errors.EmptyDataError):
             image = dataset.pull_image(index)
             scale = torch.Tensor([image.shape[1], image.shape[0],
                                   image.shape[1], image.shape[0]]).to(device)
@@ -72,7 +74,7 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
                     )),
                 ))
 
-            pd.DataFrame(detection).to_csv(str(destination), header=None)
+            pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
 
         if not detection.size or not gt_boxes.size:
             continue
@@ -112,9 +114,9 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
 
     with open(str(dest.joinpath('results.json')), 'w') as f:
         json.dump({
-            'mAP': np.mean(aps),
-            'Precision': np.mean(precisions),
-            'Recall': np.mean(recalls),
-            'GT': gt_counts,
-            'PD': pd_counts,
+            'mAP': float(np.mean(aps)),
+            'Precision': float(np.mean(precisions)),
+            'Recall': float(np.mean(recalls)),
+            'GT': int(gt_counts),
+            'PD': int(pd_counts),
         }, f)
