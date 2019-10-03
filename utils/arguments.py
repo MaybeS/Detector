@@ -52,4 +52,10 @@ class Arguments:
         parser.add_argument('--worker', required=False, default=1, type=int,
                             help="worker")
 
+        parser.add_argument('--overwrite', required=False, default=False, action='store_true',
+                            help="overwrite previous result")
+
+        parser.add_argument('--warping', required=False, default=False, action='store_true',
+                            help="Warping layer apply")
+
         return parser.parse_args()
