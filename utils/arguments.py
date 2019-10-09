@@ -33,7 +33,7 @@ class Arguments:
 
         parser.add_argument('--model', required=False, default='weights/vgg16_reducedfc.pth', type=str,
                             help="Path to model")
-        parser.add_argument('--thresh', required=False, default=.6, type=float,
+        parser.add_argument('--thresh', required=False, default=.3, type=float,
                             help="threshold")
         parser.add_argument('--batch', required=False, default=32, type=int,
                             help="batch")
@@ -52,10 +52,13 @@ class Arguments:
         parser.add_argument('--worker', required=False, default=1, type=int,
                             help="worker")
 
+        parser.add_argument('--eval-only', required=False, default=False, action='store_true',
+                            help="evaluate only, not detecting")
         parser.add_argument('--overwrite', required=False, default=False, action='store_true',
                             help="overwrite previous result")
 
-        parser.add_argument('--warping', required=False, default=False, action='store_true',
+        parser.add_argument('--warping', required=False, type=str, default='none',
+                            choices=["none", "head", "all"],
                             help="Warping layer apply")
 
         return parser.parse_args()

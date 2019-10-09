@@ -49,6 +49,11 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
             detection = pd.read_csv(str(destination), header=None).values
 
         except (FileNotFoundError, AssertionError, pd.errors.EmptyDataError):
+
+            if args.eval_only:
+                print(f'There is no result of {name}, but eval-only option enabled.')
+                continue
+
             image = dataset.pull_image(index)
             scale = torch.Tensor([image.shape[1], image.shape[0],
                                   image.shape[1], image.shape[0]]).to(device)

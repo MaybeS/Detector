@@ -101,8 +101,11 @@ class SSD(nn.Module):
             if i % 2 == 1:
                 sources.append(x)
 
-        if self.warping:
+        if self.warping == 'all':
             sources = list(map(lambda s: Warping.forward(s), sources))
+        elif self.warping == 'head':
+            sources[0] = Warping.forward(sources[0])
+            sources[1] = Warping.forward(sources[1])
 
         def refine(source: torch.Tensor):
             return source.permute(0, 2, 3, 1).contiguous()
@@ -131,20 +134,22 @@ class SSD(nn.Module):
             m.bias.data.zero_()
 
     def load(self, state_dict: dict = None):
-        if state_dict is None:
-            self.extras.apply(self.initializer)
-            self.loc.apply(self.initializer)
-            self.conf.apply(self.initializer)
+        try:
+            self.load_state_dict(state_dict)
 
-        else:
-            try:
-                self.load_state_dict(state_dict)
-
-            # Legacy handling
-            except RuntimeError:
+        except (RuntimeError, AttributeError):
+            if any(map(lambda x: 'vgg' in x, state_dict.keys())):
                 self.load_state_dict(state_dict.__class__({
                     key.replace('vgg', 'features'): value for key, value in state_dict.items()
                 }))
+
+            else:
+                if state_dict is not None:
+                    self.features.load_state_dict(state_dict)
+
+                self.extras.apply(self.initializer)
+                self.loc.apply(self.initializer)
+                self.conf.apply(self.initializer)
 
 
 class SSD300(SSD):
