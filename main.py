@@ -16,7 +16,7 @@ def main(args: Arguments.parse.Namespace):
 
     dataset = Dataset.get(args.type)(args.dataset, transform=Augmentation.get(args.type)())
 
-    model = SSD300(dataset.num_classes, warping=args.warping)
+    model = SSD300(dataset.num_classes, warping=args.warping, warping_mode=args.warping_mode)
 
     executor = Executable(args.command)
     model = executor.init(model, device, args)

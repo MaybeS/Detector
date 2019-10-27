@@ -35,6 +35,7 @@ def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
     iterator = iter(loader)
 
+    import numpy as np
     with tqdm(total=args.epoch) as tq:
         for iteration in range(args.start_epoch, args.epoch):
             try:
@@ -53,6 +54,9 @@ def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
             loss = loc_loss + conf_loss
             loss.backward()
             optimizer.step()
+
+            if torch.isnan(loss):
+                print(f'NaN detected in {iteration}')
 
             if args.save_epoch and not (iteration % args.save_epoch):
                 torch.save(model.state_dict(),
