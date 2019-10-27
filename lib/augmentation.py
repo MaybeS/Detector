@@ -456,3 +456,23 @@ class Amano(Augmentation):
 
     def __call__(self, img, boxes, labels):
         return self.augment(img, boxes, labels)
+
+
+class Detection(Augmentation):
+    def __init__(self, size=300, mean=(111, 113, 110)):
+        self.mean = mean
+        self.size = size
+        self.augment = Compose([
+            ConvertFromInts(),
+            ToAbsoluteCoords(),
+            # PhotometricDistort(),
+            # Expand(self.mean),
+            # RandomSampleCrop(),
+            RandomMirror(),
+            ToPercentCoords(),
+            Resize(self.size),
+            SubtractMeans(self.mean)
+        ])
+
+    def __call__(self, img, boxes, labels):
+        return self.augment(img, boxes, labels)
