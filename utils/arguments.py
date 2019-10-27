@@ -58,7 +58,9 @@ class Arguments:
                             help="overwrite previous result")
 
         parser.add_argument('--warping', required=False, type=str, default='none',
-                            choices=["none", "head", "all"],
+                            choices=["none", "head", "all", "first"],
                             help="Warping layer apply")
+        parser.add_argument('--warping-mode', required=False, type=str, default='sum',
+                            choices=['sum', 'average', 'concat'])
 
         return parser.parse_args()
