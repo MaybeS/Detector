@@ -38,25 +38,38 @@ class Warping(Function):
     }
 
     @classmethod
-    def forward(cls, x: torch.Tensor, grid: torch.Tensor = None) \
+    def forward(cls, x: torch.Tensor, mode: str = '', grid: torch.Tensor = None) \
             -> torch.Tensor:
         size = sum(x.shape[2:]) / 2
         if size == 1:
             return x
 
         if grid is None:
-            grid = torch.from_numpy(np.expand_dims(cls.grid(size / 2), 0)).to(x.device)
+            grid = torch.from_numpy(
+                np.expand_dims(cls.grid(wide=10, step=(20/size)), 0)).to(x.device)
 
         shape = grid.shape
         grid = grid.view(1, -1).repeat(1, x.shape[0]).view(-1, *shape[1:])
 
-        return F.grid_sample(x, grid)
+        output = F.grid_sample(x, grid)
+
+        if mode == 'sum':
+            output = output/100 + x
+        elif mode == 'average':
+            output = torch.cat((torch.unsqueeze(output, 0), torch.unsqueeze(x, 0)), 0).mean(axis=0)
+        elif mode == 'concat':
+            output = torch.cat((output, x), -1)
+        else:
+            raise NotImplementedError(f'Warping {mode} is not implemented!')
+
+        return output
 
     @classmethod
     def grid(cls, wide: int = 15, step: float = 1.) \
             -> np.ndarray:
         arange = np.arange(-wide, wide, step)
         grid = np.array(np.meshgrid(arange, arange), dtype=np.float32).transpose(1, 2, 0)
+        shape = grid.shape
         grid = np.apply_along_axis(lambda x: cls.ray2pix([*x, 3]), 1, grid.reshape(-1, 2))
 
         grid[:, 0] -= cls.PADDING[0]
@@ -65,7 +78,7 @@ class Warping(Function):
         grid[:, 0] /= cls.SHAPE[0]
         grid[:, 1] /= cls.SHAPE[1]
 
-        return grid.reshape(int(wide * 2), int(wide * 2), 2)
+        return grid.reshape(shape)
 
     @classmethod
     def ray2pix(cls, ray: Union[List, np.ndarray]) \
@@ -73,7 +86,7 @@ class Warping(Function):
         ray = np.array(ray)
 
         if np.all(ray[:2] == 0):
-            return [1997., 1473.]
+            return np.array(cls.CALIBRATION['c'])
 
         nr = ray / np.square(ray).sum()
         d = np.sqrt((nr[:2] * nr[:2]).sum())

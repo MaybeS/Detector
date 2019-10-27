@@ -32,7 +32,7 @@ class SSD(nn.Module):
     """
 
     def __init__(self, size, backbone, extras, loc, conf, num_classes: int, cfg=None,
-                 warping: bool=False):
+                 warping: bool = False, warping_mode: str = 'sum'):
         super(SSD, self).__init__()
         self.size = size
         self.num_classes = num_classes
@@ -48,6 +48,7 @@ class SSD(nn.Module):
         self.conf = nn.ModuleList(conf)
 
         self.warping = warping
+        self.warping_mode = warping_mode
 
     def detect(self, loc: torch.Tensor, conf: torch.Tensor, prior: torch.Tensor) \
             -> torch.Tensor:
@@ -88,6 +89,9 @@ class SSD(nn.Module):
         """
         f = lambda param, layer: layer(param)
 
+        if self.warping == 'first':
+            x = Warping.forward(x, self.warping_mode)
+
         sources = list()
 
         x = reduce(f, [x, *self.features[:23]])
@@ -102,10 +106,11 @@ class SSD(nn.Module):
                 sources.append(x)
 
         if self.warping == 'all':
-            sources = list(map(lambda s: Warping.forward(s), sources))
+            sources = list(map(lambda s: Warping.forward(s, self.warping_mode), sources))
+
         elif self.warping == 'head':
-            sources[0] = Warping.forward(sources[0])
-            sources[1] = Warping.forward(sources[1])
+            sources[0] = Warping.forward(sources[0], self.warping_mode)
+            sources[1] = Warping.forward(sources[1], self.warping_mode)
 
         def refine(source: torch.Tensor):
             return source.permute(0, 2, 3, 1).contiguous()

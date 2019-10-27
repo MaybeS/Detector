@@ -37,11 +37,6 @@ class Detector(Function):
             prior_data: (tensor) Prior boxes and variances from priorbox layers
                 Shape: [1, num_priors,4]
         """
-        import numpy as np
-        loc_data = torch.from_numpy(np.load('../ssd.pytorch/loc.npy').astype(np.float32))
-        conf_data = torch.from_numpy(np.load('../ssd.pytorch/conf.npy').astype(np.float32))
-        prior_data = torch.from_numpy(np.load('../ssd.pytorch/prior.npy').astype(np.float32))
-
         num = loc_data.size(0)
         num_priors = prior_data.size(0)
 
