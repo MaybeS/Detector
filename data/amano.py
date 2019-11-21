@@ -65,8 +65,6 @@ class Amano(data.Dataset, Dataset):
             assert len(self.images) == len(self.detections), \
                 "Image and Detections mismatch"
 
-        self.shape = self.pull_image(0).shape
-
     @staticmethod
     def target_trans(boxes, width, height):
         boxes[:, 1::2] /= height

@@ -15,6 +15,13 @@ from lib.augmentation import Augmentation, Base
 from utils.arguments import Arguments
 
 
+def arguments(parser):
+    parser.add_argument('--eval-only', required=False, default=False, action='store_true',
+                        help="evaluate only, not detecting")
+    parser.add_argument('--overwrite', required=False, default=False, action='store_true',
+                        help="overwrite previous result")
+
+
 def init(model: nn.Module, device: torch.device,
          args: Arguments.parse.Namespace = None) \
         -> nn.Module:

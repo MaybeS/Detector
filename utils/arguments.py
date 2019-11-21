@@ -5,62 +5,42 @@ from .executable import Executable
 
 class Arguments:
     parse = argparse
+    parser = argparse.ArgumentParser(
+        description='Single Shot MultiBox Detector')
+
+    @classmethod
+    def add_argument(cls, *args, **kwargs):
+        cls.parser.add_argument(*args, **kwargs)
 
     def __new__(cls):
-        parser = cls.parse.ArgumentParser(
-            description='Single Shot MultiBox Detector')
-
         # auto executable command
         executables = tuple(Executable.s)
         if len(executables) and Executable.ismain():
-            parser.add_argument("command",
-                                metavar="<command>",
-                                choices=executables,
-                                help=f'Choice from {", ".join(executables)}')
+            cls.parser.add_argument("command", metavar="<command>",
+                                    choices=executables,
+                                    help=f'Choice from {", ".join(executables)}')
 
-        parser.add_argument('--name', required=False, default='SSD300', type=str,
-                            help="Name of model")
+        for executor in executables:
+            Executable.s[executor].arguments(cls.parser)
 
-        parser.add_argument('-s', '--seed', required=False, default=42,
-                            help="The answer to life the universe and everything")
+        cls.parser.add_argument('--name', required=False, default='SSD300', type=str,
+                                help="Name of model")
 
-        parser.add_argument('-t', '--type', required=False, type=str, default='COCO',
-                            help="Dataset type")
-        parser.add_argument('-D', '--dataset', required=True, type=str,
-                            help="Path to dataset")
-        parser.add_argument('-d', '--dest', required=False, default='./weights', type=str,
-                            help="Path to output")
+        cls.parser.add_argument('-s', '--seed', required=False, default=42,
+                                help="The answer to life the universe and everything")
 
-        parser.add_argument('--model', required=False, default='weights/vgg16_reducedfc.pth', type=str,
-                            help="Path to model")
-        parser.add_argument('--thresh', required=False, default=.3, type=float,
-                            help="threshold")
-        parser.add_argument('--batch', required=False, default=32, type=int,
-                            help="batch")
-        parser.add_argument('--lr', required=False, default=.001, type=float,
-                            help="learning rate")
-        parser.add_argument('--momentum', required=False, default=.9, type=float,
-                            help="momentum")
-        parser.add_argument('--decay', required=False, default=5e-4, type=float,
-                            help="weight decay")
-        parser.add_argument('--epoch', required=False, default=10000, type=int,
-                            help="epoch")
-        parser.add_argument('--start-epoch', required=False, default=0, type=int,
-                            help="epoch start")
-        parser.add_argument('--save-epoch', required=False, default=250, type=int,
-                            help="epoch for save")
-        parser.add_argument('--worker', required=False, default=1, type=int,
-                            help="worker")
+        cls.parser.add_argument('-t', '--type', required=False, type=str, default='amano',
+                                help="Dataset type")
+        cls.parser.add_argument('-D', '--dataset', required=False, type=str, default='',
+                                help="Path to dataset")
+        cls.parser.add_argument('-d', '--dest', required=False, default='./weights', type=str,
+                                help="Path to output")
+        cls.parser.add_argument('--config', required=False, default=None, type=str,
+                                help="Path to config file")
 
-        parser.add_argument('--eval-only', required=False, default=False, action='store_true',
-                            help="evaluate only, not detecting")
-        parser.add_argument('--overwrite', required=False, default=False, action='store_true',
-                            help="overwrite previous result")
+        cls.parser.add_argument('--model', required=False, default='weights/vgg16_reducedfc.pth', type=str,
+                                help="Path to model")
+        cls.parser.add_argument('--thresh', required=False, default=.3, type=float,
+                                help="threshold")
 
-        parser.add_argument('--warping', required=False, type=str, default='none',
-                            choices=["none", "head", "all", "first"],
-                            help="Warping layer apply")
-        parser.add_argument('--warping-mode', required=False, type=str, default='sum',
-                            choices=['sum', 'average', 'concat'])
-
-        return parser.parse_args()
+        return cls.parser.parse_args()

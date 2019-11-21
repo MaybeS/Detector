@@ -1,4 +1,4 @@
-from typing import List
+from typing import Tuple, List
 from math import sqrt
 from itertools import product
 
@@ -8,10 +8,11 @@ import torch
 class PriorBox(object):
     """Compute priorbox coordinates in center-offset form for each source feature map.
     """
-    def __init__(self, size: int = 300,
+    def __init__(self, size: Tuple[int, int] = (300, 300),
                  aspect_ratios: List[List[int]] = None,
                  variance: List[int] = None,
-                 feature_maps: List[int] = None,
+                 feature_map_x: List[int] = None,
+                 feature_map_y: List[int] = None,
                  min_sizes: List[int] = None,
                  max_sizes: List[int] = None,
                  steps: List[int] = None,
@@ -22,7 +23,8 @@ class PriorBox(object):
         self.aspect_ratios = aspect_ratios or [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
         self.num_priors = len(self.aspect_ratios)
         self.variance = variance or [.1, .2]
-        self.feature_maps = feature_maps or [38, 19, 10, 5, 3, 1]
+        self.feature_map_x = feature_map_x or [38, 19, 10, 5, 3, 1]
+        self.feature_map_y = feature_map_y or [38, 19, 10, 5, 3, 1]
         self.min_sizes = min_sizes or [21, 45, 99, 153, 207, 261]
         self.max_sizes = max_sizes or [45, 99, 153, 207, 261, 315]
         self.steps = steps or [8, 16, 32, 64, 100, 300]
@@ -33,25 +35,24 @@ class PriorBox(object):
 
     def forward(self):
         mean = []
-        for step, min_size, max_size, ratio, feature in zip(self.steps,
-                                                            self.min_sizes,
-                                                            self.max_sizes,
-                                                            self.aspect_ratios,
-                                                            self.feature_maps):
-            for i, j in product(range(feature), repeat=2):
-                f = self.size / step
+        for step, ratio, min_size, max_size, \
+            feature_x, feature_y in zip(self.steps, self.aspect_ratios,
+                                        self.min_sizes, self.max_sizes,
+                                        self.feature_map_x, self.feature_map_y):
 
-                cx, cy = (j + .5) / f, (i + .5) / f
+            fx, fy = self.size[0] / step, self.size[1] / step
+            sx, sy = min_size / self.size[0], min_size / self.size[0]
+            px, py = sqrt(sx * (max_size / self.size[0])), sqrt(sx * (max_size / self.size[0]))
 
-                s = min_size / self.size
-                mean += [cx, cy, s, s]
+            for i, j in product(range(feature_x), range(feature_y)):
+                cx, cy = (j + .5) / fy, (i + .5) / fx
 
-                p = sqrt(s * (max_size / self.size))
-                mean += [cx, cy, p, p]
+                mean += [cx, cy, sx, sy]
+                mean += [cx, cy, px, py]
 
                 for r in ratio:
-                    mean += [cx, cy, s * sqrt(r), s / sqrt(r)]
-                    mean += [cx, cy, s / sqrt(r), s * sqrt(r)]
+                    mean += [cx, cy, sx * sqrt(r), sy / sqrt(r)]
+                    mean += [cx, cy, sx / sqrt(r), sy * sqrt(r)]
 
         # back to torch land
         output = torch.Tensor(mean).view(-1, 4)

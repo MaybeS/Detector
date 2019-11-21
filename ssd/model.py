@@ -31,14 +31,15 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, size, backbone, extras, loc, conf, num_classes: int, cfg=None,
-                 warping: bool = False, warping_mode: str = 'sum'):
+    def __init__(self, size, backbone, extras, loc, conf, num_classes: int, batch_size: int,
+                 config=None, warping: bool = False, warping_mode: str = 'sum'):
         super(SSD, self).__init__()
         self.size = size
         self.num_classes = num_classes
-        self.cfg = cfg or {}
+        self.batch_size = batch_size
+        self.config = config or {}
 
-        self.priorbox = PriorBox(**self.cfg)
+        self.priorbox = PriorBox(**self.config)
         self.priors = Variable(self.priorbox.forward(), requires_grad=False)
 
         self.features = backbone
@@ -62,7 +63,7 @@ class SSD(nn.Module):
 
     def eval(self):
         super(SSD, self).eval()
-        Detector.init(self.num_classes)
+        Detector.init(self.num_classes, self.batch_size)
 
     def train(self, mode: bool = True):
         super(SSD, self).train(mode)
@@ -163,7 +164,7 @@ class SSD300(SSD):
     EXTRAS = [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256]
     BOXES = [4, 6, 6, 6, 4, 4]
 
-    def __init__(self, num_classes: int, cfg=None, **kwargs):
+    def __init__(self, num_classes: int, batch_size: int, config=None, **kwargs):
         backbone = models.vgg16(pretrained=True).features[:-1]
         backbone[16].ceil_mode = True
 
@@ -179,7 +180,9 @@ class SSD300(SSD):
         extras = list(self.extra(backbone[-2].in_channels))
         loc, conf = self.head(backbone, extras, num_classes)
 
-        super(SSD300, self).__init__(self.SIZE, backbone, extras, loc, conf, num_classes, cfg, **kwargs)
+        super(SSD300, self).__init__(self.SIZE, backbone, extras, loc, conf,
+                                     num_classes, batch_size,
+                                     config, **kwargs)
 
     @classmethod
     def extra(cls, in_channels: int = 1024) \

@@ -11,6 +11,31 @@ from data.dataset import Dataset
 from utils.arguments import Arguments
 
 
+def arguments(parser):
+    parser.add_argument('--batch', required=False, default=32, type=int,
+                        help="batch")
+    parser.add_argument('--lr', required=False, default=.001, type=float,
+                        help="learning rate")
+    parser.add_argument('--momentum', required=False, default=.9, type=float,
+                        help="momentum")
+    parser.add_argument('--decay', required=False, default=5e-4, type=float,
+                        help="weight decay")
+    parser.add_argument('--epoch', required=False, default=10000, type=int,
+                        help="epoch")
+    parser.add_argument('--start-epoch', required=False, default=0, type=int,
+                        help="epoch start")
+    parser.add_argument('--save-epoch', required=False, default=250, type=int,
+                        help="epoch for save")
+    parser.add_argument('--worker', required=False, default=1, type=int,
+                        help="worker")
+
+    parser.add_argument('--warping', required=False, type=str, default='none',
+                        choices=["none", "head", "all", "first"],
+                        help="Warping layer apply")
+    parser.add_argument('--warping-mode', required=False, type=str, default='sum',
+                        choices=['sum', 'average', 'concat'])
+
+
 def init(model: nn.Module, device: torch.device,
          args: Arguments.parse.Namespace = None) \
         -> nn.Module:
@@ -35,7 +60,6 @@ def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
     iterator = iter(loader)
 
-    import numpy as np
     with tqdm(total=args.epoch) as tq:
         for iteration in range(args.start_epoch, args.epoch):
             try:

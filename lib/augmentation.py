@@ -52,7 +52,10 @@ class Compose(object):
 
     def __call__(self, img, boxes=None, labels=None):
         for t in self.transforms:
-            img, boxes, labels = t(img, boxes, labels)
+            try:
+                img, boxes, labels = t(img, boxes, labels)
+            except TypeError:
+                img = t(img)
         return img, boxes, labels
 
 
@@ -105,12 +108,11 @@ class ToPercentCoords(object):
 
 
 class Resize(object):
-    def __init__(self, size=300):
+    def __init__(self, size=(300, 300)):
         self.size = size
 
     def __call__(self, image, boxes=None, labels=None):
-        image = cv2.resize(image, (self.size,
-                                 self.size))
+        image = cv2.resize(image, self.size)
         return image, boxes, labels
 
 
@@ -341,12 +343,22 @@ class Expand(object):
 
 
 class RandomMirror(object):
+    def __init__(self, vertical: bool = False, horizontal: bool = True):
+        self.vertical = vertical
+        self.horizontal = horizontal
+
     def __call__(self, image, boxes, classes):
-        _, width, _ = image.shape
-        if np.random.randint(2):
-            image = image[:, ::-1]
-            boxes = boxes.copy()
+        height, width, *_ = image.shape
+
+        boxes = boxes.copy()
+        if self.vertical and np.random.randint(2):
+            image = cv2.flip(image, 0)
+            boxes[:, 1::2] = height - boxes[:, 3::-2]
+
+        if self.horizontal and np.random.randint(2):
+            image = cv2.flip(image, 1)
             boxes[:, 0::2] = width - boxes[:, 2::-2]
+
         return image, boxes, classes
 
 
@@ -426,12 +438,13 @@ class SSD(Augmentation):
 
 
 class Base(Augmentation):
-    def __init__(self, size: int = 300, mean: Tuple[int] = (104, 117, 123)):
-        self.size = size
+    def __init__(self, size: Tuple[int, int] = (300, 300), mean: Tuple[int] = (104, 117, 123),
+                 **kwargs):
+        self.size = tuple(size)
         self.mean = np.array(mean, dtype=np.float32)
 
     def __call__(self, image: np.ndarray, boxes=None, labels=None):
-        image = cv2.resize(image, (self.size, self.size)).astype(np.float32)
+        image = cv2.resize(image, self.size).astype(np.float32)
         image -= self.mean
         image = image.astype(np.float32)
 
@@ -439,7 +452,8 @@ class Base(Augmentation):
 
 
 class Amano(Augmentation):
-    def __init__(self, size=300, mean=(111, 113, 110)):
+    def __init__(self, size=300, mean=(111, 113, 110),
+                 **kwargs):
         self.mean = mean
         self.size = size
         self.augment = Compose([
@@ -459,7 +473,10 @@ class Amano(Augmentation):
 
 
 class Detection(Augmentation):
-    def __init__(self, size=300, mean=(111, 113, 110)):
+    def __init__(self, size: Tuple[int, int] = (300, 300),
+                 mean: Tuple[int, int, int] = (111, 113, 110),
+                 horizontal: bool = True, vertical: bool = True,
+                 **kwargs):
         self.mean = mean
         self.size = size
         self.augment = Compose([
@@ -468,7 +485,7 @@ class Detection(Augmentation):
             # PhotometricDistort(),
             # Expand(self.mean),
             # RandomSampleCrop(),
-            RandomMirror(),
+            RandomMirror(horizontal=horizontal, vertical=vertical),
             ToPercentCoords(),
             Resize(self.size),
             SubtractMeans(self.mean)
