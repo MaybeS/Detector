@@ -29,8 +29,12 @@ def import_subclass(path, base, scope):
                 scope[name] = obj
 
 
-def import_module(file, name):
+def import_module(path, file, name):
+    sys.path.append(path)
+
     spec = importlib.util.spec_from_file_location(name, file)
     module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
 
     return module

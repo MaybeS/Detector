@@ -10,19 +10,16 @@ eval = Router('eval')
 def eval():
     response = { 'status': 'pending' }
 
-    url = request.args.get('url', None)
+    url = request.form.get('url', '')
 
     try:
-        image = io.load(network.download(url))
+        image = io.load(url)
 
-        result = Model(image)
+        response.update({ k: v.tolist() for k, v in Model(image).items() })
         response.update({
             'status': 'ok',
 
-            'size': image.shape,
-            'boxes': result['rois'],
-            'scores': result['scores'].tolist(),
-            'classes': result['class_ids'].tolist(),
+            'size': image.shape
         })
 
     except Exception as e:

@@ -4,6 +4,7 @@ from flask import Flask
 from controller import Controller
 from view import Router
 
+
 def create():
     app = Flask(__name__)
     with open('config.json') as f:

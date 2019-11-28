@@ -12,8 +12,21 @@ def index():
 
 @model.route('/', methods=['POST'])
 def load():
-    return render(Model.load(**{
-        'num_classes': request.args.get('class', 1),
-        'expire': request.args.get('expire', 600),
-        'weight': request.args.get('weight', ''),
-    }))
+    response = {'status': 'pending'}
+
+    try:
+        Model.load(**{
+            'num_classes': request.form.get('class', 2),
+            'expire': request.form.get('expire', 600),
+            'weight': request.form.get('weight', ''),
+        })
+        response.update({'status': 'ok'})
+
+    except (FileNotFoundError, RuntimeError) as e:
+        response.update({
+            'status': 'failed',
+            'message': str(e),
+        })
+
+    finally:
+        return render(response)

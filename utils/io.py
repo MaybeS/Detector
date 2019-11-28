@@ -1,4 +1,5 @@
 from pathlib import Path
+from functools import reduce
 
 import skimage
 import numpy as np
@@ -16,6 +17,10 @@ def load(data):
     return image
 
 
+def join(path, *args):
+    return str(reduce(lambda p, a: p.joinpath(a), [Path(path), *args]))
+
+
 def iterdir(directory):
     path = Path(directory)
 
@@ -23,3 +28,9 @@ def iterdir(directory):
         path.mkdir()
     
     yield from path.iterdir()
+
+
+def transform(image, mean=(104, 117, 123)):
+    image = (skimage.transform.resize(image, (300, 300)) * 255).astype(np.float32)
+    image -= np.array(mean, dtype=np.float32)
+    return image.astype(np.float32)
