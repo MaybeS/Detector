@@ -1,6 +1,9 @@
 {
     "PATH": {
-        "weights": "./"
+        "module": "SSD",
+        "model_file": "SSD/ssd/model.py",
+        "model_name": "SSD300",
+        "weights": "./weights"
     }, "RUN": {
         "host": "0.0.0.0",
         "port": 80,
