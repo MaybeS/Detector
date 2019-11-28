@@ -16,7 +16,9 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
     executor = Executable.s[args.command]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dataset = Dataset.get(args.type)(args.dataset, transform=Augmentation.get(args.type)(**config.data))
+    dataset = Dataset.get(args.type)(args.dataset,
+                                     transform=Augmentation.get(args.type)(**config.data),
+                                     eval_only=args.eval_only)
 
     if executor.name != 'train':
         args.batch = 1

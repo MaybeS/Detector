@@ -38,19 +38,19 @@ class Detection(data.Dataset, Dataset):
     def __init__(self, root,
                  transform=None,
                  target_transform=None,
-                 detection=True,
+                 eval_only=True,
                  max_step=15):
         self.name = 'Detection'
         self.root = Path(root)
 
         self.transform = transform
         self.target_transform = target_transform or self.target_trans
-        self.detection = detection
+        self.eval_only = eval_only
         self.max_step = max_step
         self.front_only = True
         self.fail_id = set()
 
-        if detection is None:
+        if eval_only:
             self.images = list(sorted(self.root.glob(f'*{self.IMAGE_EXT}')))
 
         else:
