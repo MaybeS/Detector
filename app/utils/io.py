@@ -1,8 +1,9 @@
 from pathlib import Path
 from functools import reduce
 
-import skimage.color
 import skimage.io
+import skimage.color
+import skimage.transform
 import numpy as np
 
 
