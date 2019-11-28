@@ -7,9 +7,7 @@ model = Router('model')
 
 @model.route('/', methods=['GET'])
 def index():
-    s = Model.s()
-    print(s)
-    return render(s)
+    return render(Model.s())
 
 
 @model.route('/', methods=['POST'])

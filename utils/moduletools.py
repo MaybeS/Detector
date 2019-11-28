@@ -1,7 +1,9 @@
+import sys
+import inspect
+import importlib.util
 from pkgutil import iter_modules
 from os.path import dirname, abspath, relpath, split
-import inspect
-import sys
+
 
 
 def submodules(path):
@@ -25,3 +27,10 @@ def import_subclass(path, base, scope):
             if issubclass(obj, base) and name != base.__name__:
                 obj.__module__ = module.__name__
                 scope[name] = obj
+
+
+def import_module(file, name):
+    spec = importlib.util.spec_from_file_location(name, file)
+    module = importlib.util.module_from_spec(spec)
+
+    return module
