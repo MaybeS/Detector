@@ -46,7 +46,9 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
     dest = Path(args.dest)
 
     for index in tqdm(range(len(dataset))):
-        gt_boxes, labels = dataset.pull_anno(index)
+        if not args.eval_only:
+            gt_boxes, labels = dataset.pull_anno(index)
+
         name = dataset.pull_name(index)
         destination = Path(dest).joinpath(f'{name}.txt')
 
@@ -56,11 +58,6 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
             detection = pd.read_csv(str(destination), header=None).values
 
         except (FileNotFoundError, AssertionError, pd.errors.EmptyDataError):
-
-            if args.eval_only:
-                print(f'There is no result of {name}, but eval-only option enabled.')
-                continue
-
             image = dataset.pull_image(index)
             scale = torch.Tensor([image.shape[1], image.shape[0],
                                   image.shape[1], image.shape[0]]).to(device)
@@ -88,47 +85,49 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
 
             pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
 
-        if not detection.size or not gt_boxes.size:
-            continue
+        if not args.eval_only:
+            if not detection.size or not gt_boxes.size:
+                continue
 
-        evaluator.update((
-            detection[:, 0].astype(np.int),
-            detection[:, 1].astype(np.float32),
-            detection[:, 2:].astype(np.float32),
-            None,
-        ), (
-            np.ones(np.size(gt_boxes, 0), dtype=np.int),
-            gt_boxes.astype(np.float32),
-            None,
-        ))
+            evaluator.update((
+                detection[:, 0].astype(np.int),
+                detection[:, 1].astype(np.float32),
+                detection[:, 2:].astype(np.float32),
+                None,
+            ), (
+                np.ones(np.size(gt_boxes, 0), dtype=np.int),
+                gt_boxes.astype(np.float32),
+                None,
+            ))
 
-    aps, precisions, recalls = [], [], []
-    gt_counts, pd_counts = 0, 0
+    if not args.eval_only:
+        aps, precisions, recalls = [], [], []
+        gt_counts, pd_counts = 0, 0
 
-    for klass, (ap, precision, recall) in enumerate(zip(*evaluator.dump())):
-        # Skip BG class
-        if klass == 0:
-            continue
+        for klass, (ap, precision, recall) in enumerate(zip(*evaluator.dump())):
+            # Skip BG class
+            if klass == 0:
+                continue
 
-        print(f'AP of {klass}: {ap}')
-        print(f'\tPrecision: {precision}, Recall: {recall}')
-        print(f'{klass}: Ground Truths: {evaluator.gt_counts[klass]} / Predictions: {evaluator.pd_counts[klass]}')
+            print(f'AP of {klass}: {ap}')
+            print(f'\tPrecision: {precision}, Recall: {recall}')
+            print(f'{klass}: Ground Truths: {evaluator.gt_counts[klass]} / Predictions: {evaluator.pd_counts[klass]}')
 
-        aps.append(ap)
-        precisions.append(precision)
-        recalls.append(recall)
-        gt_counts += evaluator.gt_counts[klass]
-        pd_counts += evaluator.pd_counts[klass]
+            aps.append(ap)
+            precisions.append(precision)
+            recalls.append(recall)
+            gt_counts += evaluator.gt_counts[klass]
+            pd_counts += evaluator.pd_counts[klass]
 
-    print(f'mAP total: {np.mean(aps)}')
-    print(f'\tPrecision: {np.mean(precisions)}, Recall: {np.mean(recalls)}')
-    print(f'Ground Truths: {gt_counts} / Predictions: {pd_counts}')
+        print(f'mAP total: {np.mean(aps)}')
+        print(f'\tPrecision: {np.mean(precisions)}, Recall: {np.mean(recalls)}')
+        print(f'Ground Truths: {gt_counts} / Predictions: {pd_counts}')
 
-    with open(str(dest.joinpath('results.json')), 'w') as f:
-        json.dump({
-            'mAP': float(np.mean(aps)),
-            'Precision': float(np.mean(precisions)),
-            'Recall': float(np.mean(recalls)),
-            'GT': int(gt_counts),
-            'PD': int(pd_counts),
-        }, f)
+        with open(str(dest.joinpath('results.json')), 'w') as f:
+            json.dump({
+                'mAP': float(np.mean(aps)),
+                'Precision': float(np.mean(precisions)),
+                'Recall': float(np.mean(recalls)),
+                'GT': int(gt_counts),
+                'PD': int(pd_counts),
+            }, f)
