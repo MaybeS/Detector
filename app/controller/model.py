@@ -21,6 +21,8 @@ class Model:
             "file": cls.config['PATH']['model_file'],
             "name": cls.model_name,
         })
+        cls.model = None
+        cls.weight = ''
 
     def __new__(cls, image):
         if not getattr(cls, 'model', None):
@@ -58,7 +60,9 @@ class Model:
                 candidates[:, 1:] * scale,
             ))
         
-        print(classes.shape, scores.shape, boxes.shape)
+        boxes[:, 2] = boxes[:, 2] - boxes[:, 0]
+        boxes[:, 3] = boxes[:, 3] - boxes[:, 1]
+
         return {
             "classes": classes,
             "scores": scores,
@@ -80,6 +84,11 @@ class Model:
         if weight not in cls.s():
             raise FileNotFoundError
         
+        cls.weight = weight
         cls.model.load(torch.load(io.join(cls.config['PATH']['weights'], weight), map_location=lambda s, l: s))
         cls.model.eval()
         cls.model.to(cls.device)
+
+    @classmethod
+    def release(cls):
+        cls.model = None
