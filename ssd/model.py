@@ -8,9 +8,9 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision import models
 
-from .detector import Detector
-from .priorbox import PriorBox
-from .layers import L2Norm, Warping
+from ssd.detector import Detector
+from ssd.priorbox import PriorBox
+from ssd.layers import L2Norm, Warping
 
 
 class SSD(nn.Module):
