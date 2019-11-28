@@ -24,7 +24,8 @@ get_variable () {
 echo "=== SETUP === Just press [Enter] to use default value";
 IMAGE_NAME=$( get_variable "App Image Name" "demo-app")
 CONTAINER_NAME=$( get_variable "App Container Name" "demo-ssd")
-PORT=$( get_variable "Database Port" "8080")
+PORT=$( get_variable "App Port" "8080")
+STORAGE=$( get_variable "App shared weight" "$PWD/data")
 
 $docker build -q -t $IMAGE_NAME .
-$docker run -d --name $CONTAINER_NAME -p $PORT:80 -e WORKERS_PER_CORE=".25" $IMAGE_NAME
+$docker run -d --name $CONTAINER_NAME -p $PORT:80 -v "$STORAGE":"/weights" -e WORKERS_PER_CORE=".25" $IMAGE_NAME
