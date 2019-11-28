@@ -9,7 +9,6 @@ eval = Router('eval')
 @eval.route('/', methods=['POST'])
 def eval():
     response = { 'status': 'pending' }
-
     url = request.form.get('url', '')
 
     try:
