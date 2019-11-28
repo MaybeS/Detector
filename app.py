@@ -7,6 +7,8 @@ from view import Router
 
 def create():
     app = Flask(__name__)
+    app.name = 'SSD-demo'
+
     with open('config.json') as f:
         app.config.update(json.load(f))
 

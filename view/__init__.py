@@ -1,4 +1,6 @@
 from os import path
+from collections import defaultdict
+from functools import reduce
 
 from flask import Blueprint, jsonify, request
 
@@ -26,7 +28,14 @@ class Router(Blueprint):
     @classmethod
     def init(cls, app):
         any(map(app.register_blueprint, cls.s))
-        app.route('/')(lambda *_: cls.status)
+
+        app.route('/', endpoint='index')(lambda *_: cls.status)
+        app.route('/submodulize')(lambda *_: {
+            app.name: {
+                "url": f'http://{request.host}',
+                "entries": reduce(lambda d, r: d[str(r)].extend(r.methods) or d, [defaultdict(list), *app.url_map.iter_rules()]),
+            }
+        })
 
 
 def render(target):
