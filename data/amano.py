@@ -94,7 +94,7 @@ class Amano(data.Dataset, Dataset):
             image = self.pull_image(idx)
             height, width, channels = image.shape
 
-            if self.detection is None:
+            if self.eval_only is None:
                 uniques = np.arange(0)
                 boxes = np.empty((uniques.size, 4))
                 labels = np.empty((uniques.size, 1))

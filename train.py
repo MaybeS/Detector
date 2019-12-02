@@ -24,7 +24,7 @@ def arguments(parser):
                         help="epoch")
     parser.add_argument('--start-epoch', required=False, default=0, type=int,
                         help="epoch start")
-    parser.add_argument('--save-epoch', required=False, default=250, type=int,
+    parser.add_argument('--save-epoch', required=False, default=500, type=int,
                         help="epoch for save")
     parser.add_argument('--worker', required=False, default=1, type=int,
                         help="worker")
@@ -40,7 +40,8 @@ def init(model: nn.Module, device: torch.device,
          args: Arguments.parse.Namespace = None) \
         -> nn.Module:
 
-    model.load(torch.load(args.model, map_location=lambda s, l: s))
+    if args.model != 'None' and args.model != '':
+        model.load(torch.load(args.model, map_location=lambda s, l: s))
     model.train()
 
     if device.type == 'cuda':
@@ -60,7 +61,7 @@ def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
     iterator = iter(loader)
 
-    with tqdm(total=args.epoch) as tq:
+    with tqdm(total=args.epoch, initial=args.start_epoch) as tq:
         for iteration in range(args.start_epoch, args.epoch):
             try:
                 images, targets = next(iterator)
