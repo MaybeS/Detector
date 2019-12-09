@@ -26,7 +26,7 @@ def arguments(parser):
                         help="epoch start")
     parser.add_argument('--save-epoch', required=False, default=500, type=int,
                         help="epoch for save")
-    parser.add_argument('--worker', required=False, default=1, type=int,
+    parser.add_argument('--worker', required=False, default=4, type=int,
                         help="worker")
 
     parser.add_argument('--warping', required=False, type=str, default='none',

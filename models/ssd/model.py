@@ -8,9 +8,9 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision import models
 
-from ssd.detector import Detector
-from ssd.priorbox import PriorBox
-from ssd.layers import L2Norm, Warping
+from models.ssd.detector import Detector
+from models.ssd.priorbox import PriorBox
+from models.ssd.layers import L2Norm, Warping
 
 
 class SSD(nn.Module):
@@ -31,8 +31,35 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, size, backbone, extras, loc, conf, num_classes: int, batch_size: int,
-                 config=None, warping: bool = False, warping_mode: str = 'sum'):
+    EXTRAS = [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256]
+    BOXES = [4, 6, 6, 6, 4, 4]
+
+    def __new__(cls, num_classes: int, batch_size: int, size=(300, 300), config=None, **kwargs):
+        print('new called')
+        backbone = models.vgg16(pretrained=True).features[:-1]
+        backbone[16].ceil_mode = True
+
+        for i, layer in enumerate([
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(512, 1024, kernel_size=3, padding=6, dilation=6),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(1024, 1024, kernel_size=1),
+            nn.ReLU(inplace=True),
+        ], 30):
+            backbone.add_module(str(i), layer)
+
+        extras = list(cls.extra(backbone[-2].in_channels))
+        loc, conf = cls.head(backbone, extras, num_classes)
+
+        instance = super(SSD, cls).__new__(cls)
+        print (type(instance))
+        cls.__init__(instance, size, backbone, extras, loc, conf,
+                     num_classes, batch_size, config, **kwargs)
+        return instance
+
+    def __init__(self, size, backbone, extras, loc, conf, num_classes: int, batch_size: int, config=None,
+                 warping: bool = False, warping_mode: str = 'sum'):
+        print('init called', super(SSD, self))
         super(SSD, self).__init__()
         self.size = size
         self.num_classes = num_classes
@@ -156,33 +183,6 @@ class SSD(nn.Module):
                 self.extras.apply(self.initializer)
                 self.loc.apply(self.initializer)
                 self.conf.apply(self.initializer)
-
-
-class SSD300(SSD):
-
-    SIZE = 300
-    EXTRAS = [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256]
-    BOXES = [4, 6, 6, 6, 4, 4]
-
-    def __init__(self, num_classes: int, batch_size: int, config=None, **kwargs):
-        backbone = models.vgg16(pretrained=True).features[:-1]
-        backbone[16].ceil_mode = True
-
-        for i, layer in enumerate([
-            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
-            nn.Conv2d(512, 1024, kernel_size=3, padding=6, dilation=6),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(1024, 1024, kernel_size=1),
-            nn.ReLU(inplace=True),
-        ], 30):
-            backbone.add_module(str(i), layer)
-
-        extras = list(self.extra(backbone[-2].in_channels))
-        loc, conf = self.head(backbone, extras, num_classes)
-
-        super(SSD300, self).__init__(self.SIZE, backbone, extras, loc, conf,
-                                     num_classes, batch_size,
-                                     config, **kwargs)
 
     @classmethod
     def extra(cls, in_channels: int = 1024) \

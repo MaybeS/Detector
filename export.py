@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from ssd.detector import Detector
+from models.ssd.detector import Detector
 from utils.arguments import Arguments
 
 
