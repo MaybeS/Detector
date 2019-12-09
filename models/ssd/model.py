@@ -35,7 +35,6 @@ class SSD(nn.Module):
     BOXES = [4, 6, 6, 6, 4, 4]
 
     def __new__(cls, num_classes: int, batch_size: int, size=(300, 300), config=None, **kwargs):
-        print('new called')
         backbone = models.vgg16(pretrained=True).features[:-1]
         backbone[16].ceil_mode = True
 
@@ -52,14 +51,13 @@ class SSD(nn.Module):
         loc, conf = cls.head(backbone, extras, num_classes)
 
         instance = super(SSD, cls).__new__(cls)
-        print (type(instance))
-        cls.__init__(instance, size, backbone, extras, loc, conf,
-                     num_classes, batch_size, config, **kwargs)
+        cls.__init__(instance, num_classes, batch_size, size,
+                     backbone, extras, loc, conf, config, **kwargs)
         return instance
 
-    def __init__(self, size, backbone, extras, loc, conf, num_classes: int, batch_size: int, config=None,
+    def __init__(self, num_classes: int, batch_size: int, size: Tuple[int, int],
+                 backbone, extras, loc, conf, config=None,
                  warping: bool = False, warping_mode: str = 'sum'):
-        print('init called', super(SSD, self))
         super(SSD, self).__init__()
         self.size = size
         self.num_classes = num_classes
