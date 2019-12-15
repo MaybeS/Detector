@@ -38,7 +38,7 @@ class Detection(data.Dataset, Dataset):
     def __init__(self, root,
                  transform=None,
                  target_transform=None,
-                 eval_only=True,
+                 eval_only=False,
                  max_step=15):
         self.name = 'Detection'
         self.root = Path(root)
