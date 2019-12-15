@@ -7,7 +7,7 @@ import skimage
 import torch
 import torch.utils.data as data
 
-from data.dataset import Dataset
+from data import Dataset
 
 
 class Detection(data.Dataset, Dataset):
