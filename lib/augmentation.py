@@ -438,7 +438,8 @@ class SSD(Augmentation):
 
 
 class Base(Augmentation):
-    def __init__(self, size: Tuple[int, int] = (300, 300), mean: Tuple[int] = (104, 117, 123),
+    def __init__(self, size: Tuple[int, int] = (300, 300),
+                 mean: Tuple[float, float, float] = (104, 117, 123),
                  **kwargs):
         self.size = tuple(size)
         self.mean = np.array(mean, dtype=np.float32)
@@ -452,7 +453,8 @@ class Base(Augmentation):
 
 
 class Amano(Augmentation):
-    def __init__(self, size=300, mean=(111, 113, 110),
+    def __init__(self, size: Tuple[int, int] = (300, 300),
+                 mean: Tuple[float, float, float] = (111, 113, 110),
                  **kwargs):
         self.mean = mean
         self.size = size
@@ -474,7 +476,7 @@ class Amano(Augmentation):
 
 class Detection(Augmentation):
     def __init__(self, size: Tuple[int, int] = (300, 300),
-                 mean: Tuple[int, int, int] = (111, 113, 110),
+                 mean: Tuple[float, float, float] = (97.06, 97.53, 95.62),
                  horizontal: bool = True, vertical: bool = True,
                  **kwargs):
         self.mean = mean
