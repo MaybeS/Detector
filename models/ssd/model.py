@@ -8,9 +8,9 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision import models
 
-from models.ssd.detector import Detector
-from models.ssd.priorbox import PriorBox
-from models.ssd.layers import L2Norm, Warping
+from .detector import Detector
+from .priorbox import PriorBox
+from .layers import L2Norm, Warping
 
 
 class SSD(nn.Module):
@@ -59,9 +59,9 @@ class SSD(nn.Module):
                  backbone, extras, loc, conf, config=None,
                  warping: bool = False, warping_mode: str = 'sum'):
         super(SSD, self).__init__()
-        self.size = size
         self.num_classes = num_classes
         self.batch_size = batch_size
+        self.size = size
         self.config = config or {}
 
         self.priorbox = PriorBox(**self.config)
