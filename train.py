@@ -2,10 +2,11 @@ from pathlib import Path
 
 from tqdm import tqdm
 import torch
-from torch.autograd import Variable
-from torch.utils import data
+import torch.optim as optim
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
+from torch.autograd import Variable
+from torch.utils import data
 
 from data.dataset import Dataset
 from utils.arguments import Arguments
@@ -54,12 +55,13 @@ def init(model: nn.Module, device: torch.device,
     return model
 
 
-def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
+def train(model: nn.Module, dataset: Dataset,
+          criterion: nn.Module, optimizer: optim.Optimizer, scheduler: optim.lr_scheduler.Optimizer,
           device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
         -> None:
     loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
-    iterator = iter(loader)
+    iterator, losses = iter(loader), list()
 
     with tqdm(total=args.epoch, initial=args.start_epoch) as tq:
         for iteration in range(args.start_epoch, args.epoch):
@@ -68,6 +70,8 @@ def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
             except StopIteration:
                 iterator = iter(loader)
                 images, targets = next(iterator)
+                if loss is not None:
+                    scheduler.step(sum(losses) / len(losses))
 
             images = Variable(images.to(device), requires_grad=False)
             targets = [Variable(target.to(device), requires_grad=False) for target in targets]
@@ -77,6 +81,7 @@ def train(model: nn.Module, dataset: Dataset, criterion, optimizer,
 
             loc_loss, conf_loss = criterion(output, targets)
             loss = loc_loss + conf_loss
+            losses.append(loss.item())
             loss.backward()
             optimizer.step()
 
