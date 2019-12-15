@@ -14,12 +14,34 @@ class Config:
     steps = [8, 16, 32, 64, 100, 300]
     clip = True
 
+    optimizer = {
+        "lr": .001,
+        "momentum": .9,
+        "weight_decay": 5e-4
+    }
+    scheduler = {
+        "factor": .1,
+        "patience": 3,
+    }
+
     def __init__(self, path: str):
-        if path is not None and Path(path).exists():
+        try:
             with open(path) as f:
-                context = json.load(f)
-            for key, value in context.items():
-                setattr(self, key, value)
+                for key, value in json.load(f).items():
+                    self.update(key, value)
+        except (FileNotFoundError, RuntimeError) as e:
+            print(f'Configfile {path} is not exists or can not open')
+
+    def update(self, key, value):
+        if isinstance(getattr(self, key), dict):
+            getattr(self, key).update(value)
+        else:
+            setattr(self, key, value)
+
+    def sync(self, arguments: dict):
+        for key, value in arguments.items():
+            if key in self.data.keys():
+                self.update(key, value)
 
     @property
     def data(self):

@@ -13,7 +13,6 @@ from utils.config import Config
 
 
 def main(args: Arguments.parse.Namespace, config: Config):
-
     executor = Executable.s[args.command]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset = Dataset.get(args.type)(args.dataset,
@@ -33,15 +32,20 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr,
                           momentum=args.momentum, weight_decay=args.decay)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=.1, patience=3)
+
     criterion = Loss(dataset.num_classes, device=device)
 
     executor(model, dataset=dataset,
-             criterion=criterion, optimizer=optimizer,              # train args
-             transform=Augmentation.get('base')(**config.data),     # test args
+             criterion=criterion, optimizer=optimizer, scheduler=scheduler,     # train args
+             transform=Augmentation.get('base')(**config.data),                 # test args
              device=device, args=args)
 
 
 if __name__ == '__main__':
     arguments = Arguments()
+    config = Config(arguments.config)
+    config.sync(vars(arguments))
+
     seed(arguments.seed)
-    main(arguments, Config(arguments.config))
+    main(arguments, config)
