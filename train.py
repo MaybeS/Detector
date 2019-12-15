@@ -8,7 +8,8 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from torch.utils import data
 
-from data.dataset import Dataset
+from data import Dataset
+from models import DataParallel
 from utils.arguments import Arguments
 
 
@@ -46,10 +47,8 @@ def init(model: nn.Module, device: torch.device,
     model.train()
 
     if device.type == 'cuda':
-        model = nn.DataParallel(model)
-        model.state_dict = model.module.state_dict
+        model = DataParallel(model)
         torch.backends.cudnn.benchmark = True
-
     model.to(device)
 
     return model
@@ -65,12 +64,14 @@ def train(model: nn.Module, dataset: Dataset,
 
     with tqdm(total=args.epoch, initial=args.start_epoch) as tq:
         for iteration in range(args.start_epoch, args.epoch):
+
             try:
                 images, targets = next(iterator)
+
             except StopIteration:
                 iterator = iter(loader)
                 images, targets = next(iterator)
-                if loss is not None:
+                if loss is not None and scheduler is not None:
                     scheduler.step(sum(losses) / len(losses))
 
             images = Variable(images.to(device), requires_grad=False)

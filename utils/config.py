@@ -25,12 +25,13 @@ class Config:
     }
 
     def __init__(self, path: str):
-        try:
-            with open(path) as f:
-                for key, value in json.load(f).items():
-                    self.update(key, value)
-        except (FileNotFoundError, RuntimeError) as e:
-            print(f'Configfile {path} is not exists or can not open')
+        if path is not None:
+            try:
+                with open(path) as f:
+                    for key, value in json.load(f).items():
+                        self.update(key, value)
+            except (FileNotFoundError, RuntimeError) as e:
+                print(f'Configfile {path} is not exists or can not open')
 
     def update(self, key, value):
         if isinstance(getattr(self, key), dict):

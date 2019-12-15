@@ -3,7 +3,7 @@ from pathlib import Path
 import torch
 import torch.optim as optim
 
-from models.ssd import SSD, Loss
+from models import Model
 from data.dataset import Dataset
 from lib.augmentation import Augmentation
 from utils import seed
@@ -22,9 +22,9 @@ def main(args: Arguments.parse.Namespace, config: Config):
     if executor.name != 'train':
         args.batch = 1
 
-    model = SSD.__new__(SSD, dataset.num_classes, args.batch,
-                        warping=args.warping, warping_mode=args.warping_mode,
-                        config=config.data)
+    model = Model.get('SSD').new(dataset.num_classes, args.batch,
+                                 warping=args.warping, warping_mode=args.warping_mode,
+                                 config=config.data)
 
     model = executor.init(model, device, args)
 
@@ -34,7 +34,7 @@ def main(args: Arguments.parse.Namespace, config: Config):
                           momentum=args.momentum, weight_decay=args.decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=.1, patience=3)
 
-    criterion = Loss(dataset.num_classes, device=device)
+    criterion = model.loss(dataset.num_classes, device=device)
 
     executor(model, dataset=dataset,
              criterion=criterion, optimizer=optimizer, scheduler=scheduler,     # train args

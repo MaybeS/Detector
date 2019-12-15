@@ -9,7 +9,8 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 
-from data.dataset import Dataset
+from data import Dataset
+from models import DataParallel
 from lib.evaluate import Evaluator
 from lib.augmentation import Augmentation, Base
 from utils.arguments import Arguments
@@ -30,10 +31,8 @@ def init(model: nn.Module, device: torch.device,
     model.eval()
 
     if device.type == 'cuda':
-        model = nn.DataParallel(model)
-        model.state_dict = model.module.state_dict
+        model = DataParallel(model)
         torch.backends.cudnn.benchmark = True
-
     model.to(device)
 
     return model
