@@ -8,12 +8,13 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision import models
 
+from models import Model
+from .loss import Loss
 from .detector import Detector
 from .priorbox import PriorBox
 from .layers import L2Norm, Warping
 
-
-class SSD(nn.Module):
+class SSD(nn.Module, Model):
     """Single Shot Multibox Architecture
     The network is composed of a base VGG network followed by the
     added multibox conv layers.  Each multibox layer branches into
@@ -30,11 +31,14 @@ class SSD(nn.Module):
         extras: extra layers that feed to multibox loc and conf layers
         head: "multibox head" consists of loc and conf conv layers
     """
+    LOSS = Loss
 
     EXTRAS = [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256]
     BOXES = [4, 6, 6, 6, 4, 4]
 
-    def __new__(cls, num_classes: int, batch_size: int, size=(300, 300), config=None, **kwargs):
+    @classmethod
+    def new(cls, num_classes: int, batch_size: int, size: Tuple[int, int] = (300, 300),
+            config=None, **kwargs):
         backbone = models.vgg16(pretrained=True).features[:-1]
         backbone[16].ceil_mode = True
 
@@ -50,10 +54,8 @@ class SSD(nn.Module):
         extras = list(cls.extra(backbone[-2].in_channels))
         loc, conf = cls.head(backbone, extras, num_classes)
 
-        instance = super(SSD, cls).__new__(cls)
-        cls.__init__(instance, num_classes, batch_size, size,
-                     backbone, extras, loc, conf, config, **kwargs)
-        return instance
+        return cls(num_classes, batch_size, size,
+                   backbone, extras, loc, conf, config, **kwargs)
 
     def __init__(self, num_classes: int, batch_size: int, size: Tuple[int, int],
                  backbone, extras, loc, conf, config=None,

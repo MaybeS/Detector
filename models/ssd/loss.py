@@ -40,7 +40,7 @@ class Loss(nn.Module):
                  negative_overlap: float = .5,
                  encode_target: bool = False,
                  variance: List[float] = None,
-                 device=None):
+                 device=None, **kwargs):
         super(Loss, self).__init__()
         self.device = device
 

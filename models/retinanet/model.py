@@ -5,27 +5,29 @@ import torch
 import torch.nn as nn
 
 from lib.box import nms
+from models import Model
 from .layers import BasicBlock, Bottleneck, PyramidFeatures, Regression
 from .layers import BBoxTransform, ClipBoxes
 from .anchors import Anchors
 from .loss import FocalLoss
 
-class RetinaNet(nn.Module):
+
+class RetinaNet(nn.Module, Model):
+    LOSS = FocalLoss
 
     BLOCK_TYPES = {18: BasicBlock, 34: BasicBlock, 50: Bottleneck, 101: Bottleneck, 152: Bottleneck}
     BLOCK_SIZES = {
         18: [2, 2, 2, 2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3]
     }
 
-    def __new__(cls, num_classes: int, batch_size: int, block: int = 101,
-                config=None, **kwargs):
+    @classmethod
+    def new(cls, num_classes: int, batch_size: int, block: int = 101,
+            config=None, **kwargs):
 
         assert block in cls.BLOCKS, f"Only support {cls.BLOCKS.keys()}"
 
-        instance = super(RetinaNet, cls).__new__(cls)
-        cls.__init__(instance, num_classes, batch_size,
-                     cls.BLOCK_TYPES[block], cls.BLOCK_SIZES[block], **kwargs)
-        return instance
+        return cls(num_classes, batch_size,
+                   cls.BLOCK_TYPES[block], cls.BLOCK_SIZES[block], **kwargs)
 
     def __init__(self, num_classes: int, batch_size: int, block: Union[BasicBlock, Bottleneck], layers,
                  prior: float = .01):
@@ -39,10 +41,10 @@ class RetinaNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
-        self.layer1 = self.make_layer(block, 64, layers[0])
-        self.layer2 = self.make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self.make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self.make_layer(block, 512, layers[3], stride=2)
+        self.layer1 = self.make_layer(block, 64, self.inplanes, layers[0])
+        self.layer2 = self.make_layer(block, 128, self.inplanes, layers[1], stride=2)
+        self.layer3 = self.make_layer(block, 256, self.inplanes, layers[2], stride=2)
+        self.layer4 = self.make_layer(block, 512, self.inplanes, layers[3], stride=2)
 
         if block == BasicBlock:
             fpn_sizes = [
