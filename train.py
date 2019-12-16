@@ -31,11 +31,16 @@ def arguments(parser):
     parser.add_argument('--worker', required=False, default=4, type=int,
                         help="worker")
 
+    # season 1 warping
     parser.add_argument('--warping', required=False, type=str, default='none',
                         choices=["none", "head", "all", "first"],
                         help="Warping layer apply")
     parser.add_argument('--warping-mode', required=False, type=str, default='sum',
                         choices=['sum', 'average', 'concat'])
+
+    # season 2 pseudo label
+    parser.add_argument('--pseudo', required=False, type=float, default=.0,
+                        help="pseudo label using ratio")
 
 
 def init(model: nn.Module, device: torch.device,
@@ -48,6 +53,7 @@ def init(model: nn.Module, device: torch.device,
 
     if device.type == 'cuda':
         model = DataParallel(model)
+        model.state_dict = model.module.state_dict
         torch.backends.cudnn.benchmark = True
     model.to(device)
 
@@ -71,6 +77,7 @@ def train(model: nn.Module, dataset: Dataset,
             except StopIteration:
                 iterator = iter(loader)
                 images, targets = next(iterator)
+
                 if loss is not None and scheduler is not None:
                     scheduler.step(sum(losses) / len(losses))
 
