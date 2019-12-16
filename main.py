@@ -17,12 +17,15 @@ def main(args: Arguments.parse.Namespace, config: Config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset = Dataset.get(args.type)(args.dataset,
                                      transform=Augmentation.get(args.type)(**config.data),
+                                     train=args.command == 'train',
                                      eval_only=args.eval_only)
 
     if executor.name != 'train':
         args.batch = 1
 
-    model = Model.get('SSD').new(dataset.num_classes, args.batch,
+    num_classes = args.classes or dataset.num_classes
+
+    model = Model.get('SSD').new(num_classes, args.batch,
                                  warping=args.warping, warping_mode=args.warping_mode,
                                  config=config.data)
 
@@ -33,8 +36,9 @@ def main(args: Arguments.parse.Namespace, config: Config):
     optimizer = optim.SGD(model.parameters(), lr=args.lr,
                           momentum=args.momentum, weight_decay=args.decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=.1, patience=3)
+    scheduler = None
 
-    criterion = model.loss(dataset.num_classes, device=device)
+    criterion = model.loss(num_classes, device=device)
 
     executor(model, dataset=dataset,
              criterion=criterion, optimizer=optimizer, scheduler=scheduler,     # train args

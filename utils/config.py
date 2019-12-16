@@ -34,7 +34,7 @@ class Config:
                 print(f'Configfile {path} is not exists or can not open')
 
     def update(self, key, value):
-        if isinstance(getattr(self, key), dict):
+        if isinstance(getattr(self, key, None), dict):
             getattr(self, key).update(value)
         else:
             setattr(self, key, value)
