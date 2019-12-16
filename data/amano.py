@@ -44,8 +44,9 @@ class Amano(data.Dataset, Dataset):
     def __init__(self, root,
                  transform=None,
                  target_transform=None,
-                 eval_only=False,
-                 max_step=15):
+                 max_step=15,
+                 train: bool = True,
+                 eval_only: bool = False):
         self.name = 'AMANO'
         self.root = Path(root)
 

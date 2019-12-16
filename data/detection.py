@@ -12,13 +12,15 @@ from data import Dataset
 
 class Detection(data.Dataset, Dataset):
     num_classes = 2
+    class_names = ('BACKGROUND',
+                   'Car')
 
     IMAGE_DIR = 'images'
     IMAGE_EXT = '.jpg'
     DETECTION_DIR = 'annotations'
     DETECTION_EXT = '.txt'
 
-    SHAPE = 1920, 512
+    SHAPE = 300, 300
 
     cfg = {
         'num_classes': 2,
@@ -38,15 +40,14 @@ class Detection(data.Dataset, Dataset):
     def __init__(self, root,
                  transform=None,
                  target_transform=None,
-                 eval_only=False,
-                 max_step=15):
+                 train: bool = True,
+                 eval_only: bool = False):
         self.name = 'Detection'
         self.root = Path(root)
 
         self.transform = transform
         self.target_transform = target_transform or self.target_trans
         self.eval_only = eval_only
-        self.max_step = max_step
         self.front_only = True
         self.fail_id = set()
 
