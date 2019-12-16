@@ -495,3 +495,25 @@ class Detection(Augmentation):
 
     def __call__(self, img, boxes, labels):
         return self.augment(img, boxes, labels)
+
+
+class VOC(Augmentation):
+    def __init__(self, size: Tuple[int, int] = (300, 300),
+                 mean: Tuple[float, float, float] = (123, 117, 104), std: float = 1.,
+                 **kwargs):
+        self.mean = mean
+        self.size = size
+        self.augment = Compose([
+            ConvertFromInts(),
+            PhotometricDistort(),
+            Expand(self.mean),
+            RandomSampleCrop(),
+            RandomMirror(),
+            ToPercentCoords(),
+            Resize(self.size),
+            SubtractMeans(self.mean),
+            lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+        ])
+
+    def __call__(self, img, boxes, labels):
+        return self.augment(img, boxes, labels)
