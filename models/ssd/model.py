@@ -1,6 +1,7 @@
+import re
 from typing import List, Iterable, Tuple, Union
 from functools import reduce
-from itertools import cycle
+from itertools import cycle, chain
 
 import torch
 import torch.nn as nn
@@ -13,6 +14,7 @@ from .loss import Loss
 from .detector import Detector
 from .priorbox import PriorBox
 from .layers import L2Norm, Warping
+
 
 class SSD(nn.Module, Model):
     """Single Shot Multibox Architecture
@@ -170,19 +172,41 @@ class SSD(nn.Module, Model):
         try:
             self.load_state_dict(state_dict)
 
-        except (RuntimeError, AttributeError):
-            if any(map(lambda x: 'vgg' in x, state_dict.keys())):
-                self.load_state_dict(state_dict.__class__({
-                    key.replace('vgg', 'features'): value for key, value in state_dict.items()
-                }))
-
-            else:
-                if state_dict is not None:
-                    self.features.load_state_dict(state_dict)
+        # if state dict is only vgg features
+        except RuntimeError:
+            try:
+                self.features.load_state_dict(state_dict)
 
                 self.extras.apply(self.initializer)
                 self.loc.apply(self.initializer)
                 self.conf.apply(self.initializer)
+
+            # if state dict is legacy pre-trained features
+            except RuntimeError:
+                def refine(text, replace_map, pattern):
+                    return pattern.sub(lambda m: next(k for k, v in replace_map.items() if m.group(0) in v), text)
+
+                remove_prefix = ['source_layer_add_ons']
+                replace_map = {
+                    'features': ['vgg', 'base_net'],
+                    'loc': ['regression_headers'],
+                    'conf': ['classification_headers'],
+                    'extras.0': ['extras.0.0'], 'extras.1': ['extras.0.2'],
+                    'extras.2': ['extras.1.0'], 'extras.3': ['extras.1.2'],
+                    'extras.4': ['extras.2.0'], 'extras.5': ['extras.2.2'],
+                    'extras.6': ['extras.3.0'], 'extras.7': ['extras.3.2'],
+                }
+                pattern = re.compile('|'.join(chain(*replace_map.values())))
+
+                self.load_state_dict(state_dict.__class__({
+                    refine(key, replace_map, pattern): value for key, value in state_dict.items()
+                    if not any(map(key.startswith, remove_prefix))
+                }), strict=False)
+
+        except AttributeError:
+            self.extras.apply(self.initializer)
+            self.loc.apply(self.initializer)
+            self.conf.apply(self.initializer)
 
     @classmethod
     def extra(cls, in_channels: int = 1024) \
