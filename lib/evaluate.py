@@ -54,8 +54,8 @@ class Evaluator:
         self.TP, self.FP, self.FN = np.zeros((3, sample_patch, n_class), dtype=np.uint32)
         self.gt_counts, self.pd_counts = np.zeros((2, n_class), dtype=np.uint32)
 
-    def update(self, predictions: Tuple[np.ndarray, Union[np.ndarray, None], np.ndarray, np.ndarray],
-               groundtruths: Tuple[np.ndarray, np.ndarray, np.ndarray]) \
+    def update(self, predictions: Tuple[np.ndarray, Union[np.ndarray, None], np.ndarray, Union[np.ndarray, None]],
+               groundtruths: Tuple[np.ndarray, np.ndarray, Union[np.ndarray, None]]) \
             -> None:
         """Update predictions and groundtruths for each frames.
 

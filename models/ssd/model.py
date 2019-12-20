@@ -224,6 +224,6 @@ class SSD(nn.Module, Model):
         def gen(count_layer):
             count, layer = count_layer
             return nn.Conv2d(layer.out_channels, count * 4, kernel_size=3, padding=1), \
-                   nn.Conv2d(layer.out_channels, count * num_classes, kernel_size=3, padding=1)
+                nn.Conv2d(layer.out_channels, count * num_classes, kernel_size=3, padding=1)
 
         return tuple(zip(*map(gen, zip(cls.BOXES, list(backbone[21::12]) + extras[1::2]))))

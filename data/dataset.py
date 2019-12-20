@@ -7,6 +7,8 @@ from utils.beholder import Beholder
 
 
 class Dataset(metaclass=Beholder):
+    num_classes = 1
+
     @staticmethod
     def collate(batch):
         """Custom collate fn for dealing with batches of images that have a different
