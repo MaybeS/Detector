@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 
 
@@ -9,8 +11,8 @@ def point_form(boxes):
     Return:
         boxes: (tensor) Converted xmin, ymin, xmax, ymax form of boxes.
     """
-    return torch.cat((boxes[:, :2] - boxes[:, 2:]/2,     # xmin, ymin
-                     boxes[:, :2] + boxes[:, 2:]/2), 1)  # xmax, ymax
+    return torch.cat((boxes[..., :2] - boxes[..., 2:] / 2,     # xmin, ymin
+                     boxes[..., :2] + boxes[..., 2:] / 2), 1)  # xmax, ymax
 
 
 def center_size(boxes):
@@ -136,7 +138,7 @@ def encode(matched, priors, variances, eps=1e-5):
 
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
-def decode(loc, priors, variances):
+def decode(loc, priors, variance):
     """Decode locations from predictions using priors to undo
     the encoding we did for offset regression at train time.
     Args:
@@ -148,12 +150,16 @@ def decode(loc, priors, variances):
     Return:
         decoded bounding box predictions
     """
+    center_variance, size_variance = variance
+
+    if priors.dim() + 1 == loc.dim():
+        priors = priors.unsqueeze(0)
 
     boxes = torch.cat((
-        priors[:, :2] + loc[:, :2] * variances[0] * priors[:, 2:],
-        priors[:, 2:] * torch.exp(loc[:, 2:] * variances[1])), 1)
-    boxes[:, :2] -= boxes[:, 2:] / 2
-    boxes[:, 2:] += boxes[:, :2]
+        priors[..., :2] + loc[..., :2] * center_variance * priors[..., 2:],
+        priors[..., 2:] * torch.exp(loc[..., 2:] * size_variance)), dim=loc.dim() - 1)
+    boxes[..., :2] -= boxes[..., 2:] / 2
+    boxes[..., 2:] += boxes[..., :2]
     return boxes
 
 
