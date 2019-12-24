@@ -27,44 +27,45 @@ class Detector(Function):
         cls.variance = variance or [.1, .2]
 
     @classmethod
-    def forward(cls, loc_data: torch.Tensor,
-                conf_data: torch.Tensor,
-                prior_data: torch.Tensor):
+    def forward(cls, locations: torch.Tensor,
+                confidences: torch.Tensor,
+                prior_boxes: torch.Tensor):
         """
         Args:
-            loc_data: (tensor) Loc preds from loc layers
+            locations: (tensor) Loc preds from loc layers
                 Shape: [batch, num_priors*4]
-            conf_data: (tensor) Shape: Conf preds from conf layers
+            confidences: (tensor) Shape: Conf preds from conf layers
                 Shape: [batch*num_priors, num_classes]
-            prior_data: (tensor) Prior boxes and variances from priorbox layers
+            prior_boxes: (tensor) Prior boxes and variances from priorbox layers
                 Shape: [1, num_priors,4]
         """
-        num_priors = prior_data.size(0)
+        num_priors = prior_boxes.size(0)
 
         output = torch.zeros(cls.batch_size, cls.num_classes, cls.top_k, 5) if cls.nms else None
-        conf_preds = conf_data.view(cls.batch_size, num_priors, cls.num_classes).transpose(2, 1)
+        confidences = confidences.view(cls.batch_size, num_priors, cls.num_classes).transpose(2, 1)
 
         # Decode predictions into bboxes.
-        for i in range(cls.batch_size):
-            output_batch = None
-            decoded_boxes = decode(loc_data[i], prior_data, cls.variance)
-            conf_scores = conf_preds[i].clone()
+        for batch_index, (location, confidence) in enumerate(zip(locations, confidences)):
+            decoded_boxes = decode(location, prior_boxes, cls.variance)
+            conf_scores = confidence.clone()
 
             if cls.nms:
-                for cl in range(1, cls.num_classes):
+                for class_index in range(1, cls.num_classes):
                     # idx of highest scoring and non-overlapping boxes per class
-                    c_mask = conf_scores[cl].gt(cls.conf_thresh)
-                    scores = conf_scores[cl][c_mask]
+                    conf_mask = conf_scores[class_index].gt(cls.conf_thresh)
+                    scores = conf_scores[class_index][conf_mask]
 
                     if scores.size(0) == 0:
                         continue
 
-                    l_mask = c_mask.unsqueeze(1).expand_as(decoded_boxes)
-                    boxes = decoded_boxes[l_mask].view(-1, 4)
+                    loc_mask = conf_mask.unsqueeze(1).expand_as(decoded_boxes)
+                    boxes = decoded_boxes[loc_mask].view(-1, 4)
 
                     ids, count = nms(boxes, scores, cls.nms_thresh, cls.top_k)
-                    output[i, cl, :count] = \
-                        torch.cat((scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]), 1)
+                    output[batch_index, class_index, :count] = torch.cat((
+                        scores[ids[:count]].unsqueeze(1),
+                        boxes[ids[:count]]
+                    ), dim=1)
 
             # skip nms process for ignore torch script export error
             else:
@@ -73,6 +74,7 @@ class Detector(Function):
                         conf_scores.unsqueeze(-1),
                         decoded_boxes.repeat(cls.num_classes, 1).view(-1, *decoded_boxes.shape),
                     ), dim=-1).unsqueeze(0)
+
                 else:
                     output = torch.cat((
                         output,

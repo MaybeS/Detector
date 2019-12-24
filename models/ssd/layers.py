@@ -3,29 +3,43 @@ from typing import List, Union
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.init as init
 import torch.nn.functional as F
 from torch.autograd import Function
 
 
-class L2Norm(nn.Module):
-    def __init__(self, n_channels, scale, eps: float = 1e-10):
-        super(L2Norm, self).__init__()
-        self.n_channels = n_channels
-        self.gamma = scale or None
-        self.eps = eps
+def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, onnx_compatible=False):
+    """Replace Conv2d with a depthwise Conv2d and Pointwise Conv2d.
+    """
+    ReLU = nn.ReLU if onnx_compatible else nn.ReLU6
 
-        self.weight = nn.Parameter(torch.Tensor(self.n_channels))
-        self.reset_parameters()
+    return nn.Sequential(
+        nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=kernel_size,
+                  groups=in_channels, stride=stride, padding=padding),
+        nn.BatchNorm2d(in_channels),
+        ReLU(),
+        nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1),
+    )
 
-    def reset_parameters(self):
-        init.constant_(self.weight, self.gamma)
 
-    def forward(self, x):
-        x = torch.div(x, x.pow(2).sum(dim=1, keepdim=True).sqrt() + self.eps)
-        out = self.weight.unsqueeze(0).unsqueeze(2).unsqueeze(3).expand_as(x) * x
+class GraphPath(nn.Module):
 
-        return out
+    def __init__(self, name, index):
+        super(GraphPath, self).__init__()
+        self.name = name
+        self.index = index
+
+    def forward(self, x: torch.Tensor, layer: nn.Module):
+        sub = getattr(layer, self.name)
+
+        for layer in sub[:self.index]:
+            x = layer(x)
+
+        y = x
+
+        for layer in sub[self.index:]:
+            x = layer(x)
+
+        return x, y
 
 
 class Warping(Function):

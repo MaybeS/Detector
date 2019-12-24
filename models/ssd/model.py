@@ -1,19 +1,18 @@
 import re
 from typing import List, Iterable, Tuple, Union
 from functools import reduce
-from itertools import cycle, chain
+from itertools import chain
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 from torchvision import models
 
 from models import Model
 from .loss import Loss
 from .detector import Detector
 from .priorbox import PriorBox
-from .layers import L2Norm, Warping
+from .layers import GraphPath, Warping, SeperableConv2d
 
 
 class SSD(nn.Module, Model):
@@ -26,56 +25,47 @@ class SSD(nn.Module, Model):
            boxes specific to the layer's feature map size.
     See: https://arxiv.org/pdf/1512.02325.pdf for more details.
 
-    Args:
-        phase: (string) Can be "test" or "train"
-        size: input image size
-        base: VGG16 layers for input, size of either 300 or 500
-        extras: extra layers that feed to multibox loc and conf layers
-        head: "multibox head" consists of loc and conf conv layers
+    Custom SSD backbone requires below things
+        - backbone: return feature layers
+        - extra: return extra layers
+        - head: return location, confidence layers as tuple
+        - APPENDIX: list of extract information (index, preprocess, name)
+            e.g. [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     """
     LOSS = Loss
 
-    EXTRAS = [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256]
-    BOXES = [4, 6, 6, 6, 4, 4]
-
     @classmethod
     def new(cls, num_classes: int, batch_size: int, size: Tuple[int, int] = (300, 300),
-            config=None, **kwargs):
-        backbone = models.vgg16(pretrained=True).features[:-1]
-        backbone[16].ceil_mode = True
+            base=None, config=None, **kwargs):
+        base = cls.get(f'SSD_{base}', SSD_VGG16)
 
-        for i, layer in enumerate([
-            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
-            nn.Conv2d(512, 1024, kernel_size=3, padding=6, dilation=6),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(1024, 1024, kernel_size=1),
-            nn.ReLU(inplace=True),
-        ], 30):
-            backbone.add_module(str(i), layer)
-
-        extras = list(cls.extra(backbone[-2].in_channels))
-        loc, conf = cls.head(backbone, extras, num_classes)
+        backbone = base.backbone(pretrained=True)
+        extras = list(base.extra())
+        loc, conf = base.head(backbone, extras, num_classes)
+        appendix = base.APPENDIX
+        config.update({'prior': base.PRIOR})
 
         return cls(num_classes, batch_size, size,
-                   backbone, extras, loc, conf, config, **kwargs)
+                   backbone, extras, loc, conf, appendix, config, **kwargs)
 
     def __init__(self, num_classes: int, batch_size: int, size: Tuple[int, int],
-                 backbone, extras, loc, conf, config=None,
+                 backbone, extras, loc, conf, appendix, config=None,
                  warping: bool = False, warping_mode: str = 'sum'):
         super(SSD, self).__init__()
         self.num_classes = num_classes
         self.batch_size = batch_size
         self.size = size
+        self.appendix = appendix
         self.config = config or {}
 
-        self.priorbox = PriorBox(**self.config)
-        self.priors = Variable(self.priorbox.forward(), requires_grad=False)
+        self.priors = PriorBox(**self.config, config=self.config.get('prior', None)).forward()
 
         self.features = backbone
-        self.L2Norm = L2Norm(512, 20)
-        self.extras = nn.ModuleList(extras)
-        self.loc = nn.ModuleList(loc)
-        self.conf = nn.ModuleList(conf)
+        self.extras, self.loc, self.conf = map(nn.ModuleList, (extras, loc, conf))
+
+        for _, layer, name in self.appendix:
+            if isinstance(layer, nn.Module):
+                self.add_module(name, layer)
 
         self.warping = warping
         self.warping_mode = warping_mode
@@ -117,23 +107,38 @@ class SSD(nn.Module, Model):
                     2: localization layers, Shape: [batch, num_priors*4]
                     3: priorbox layers, Shape: [2, num_priors*4]
         """
-        f = lambda param, layer: layer(param)
+        def _forward(tensor: torch.Tensor, module: nn.Module) \
+                -> torch.Tensor:
+            return module.forward(tensor)
 
         if self.warping == 'first':
             x = Warping.forward(x, self.warping_mode)
 
-        sources = list()
+        start, sources = 0, []
 
-        x = reduce(f, [x, *self.features[:23]])
-        sources.append(self.L2Norm(x))
+        # forward layers for extract sources
+        for index, layer, *_ in self.appendix:
+            x = reduce(_forward, [x, *self.features[start:index]])
 
-        x = reduce(f, [x, *self.features[23:]])
-        sources.append(x)
+            if isinstance(layer, GraphPath):
+                x, y = layer(x, self.features[index])
+                index += 1
+
+            elif layer is not None:
+                y = layer(x)
+
+            else:
+                y = x
+
+            sources.append(y)
+            start = index
+
+        # forward remain parts
+        x = reduce(_forward, [x, *self.features[start:]])
 
         for i, layer in enumerate(self.extras):
-            x = F.relu(layer(x), inplace=True)
-            if i % 2 == 1:
-                sources.append(x)
+            x = _forward(x, layer)
+            sources.append(x)
 
         if self.warping == 'all':
             sources = list(map(lambda s: Warping.forward(s, self.warping_mode), sources))
@@ -146,16 +151,15 @@ class SSD(nn.Module, Model):
             return source.permute(0, 2, 3, 1).contiguous()
 
         def reshape(tensor: torch.Tensor):
-            return torch.cat(tuple(map(lambda x: x.view(x.size(0), -1), tensor)), 1)
+            return torch.cat(tuple(map(lambda t: t.view(t.size(0), -1), tensor)), 1)
 
-        loc, conf = map(reshape, zip(*[(refine(loc(source)), refine(conf(source)))
-                                       for source, loc, conf in zip(sources, self.loc, self.conf)]))
+        locations, confidences = map(reshape, zip(*[(refine(loc(source)), refine(conf(source)))
+                                                    for source, loc, conf in zip(sources, self.loc, self.conf)]))
 
-        output = (
-            loc.view(loc.size(0), -1, 4),
-            conf.view(conf.size(0), -1, self.num_classes),
-            self.priors.to(x.device),
-        )
+        locations = locations.view(self.batch_size, -1, 4)
+        confidences = confidences.view(self.batch_size, -1, self.num_classes)
+
+        output = (locations, confidences, self.priors.to(x.device))
 
         if not self.training:
             output = self.detect(*output).to(x.device)
@@ -191,10 +195,10 @@ class SSD(nn.Module, Model):
                     'features': ['vgg', 'base_net'],
                     'loc': ['regression_headers'],
                     'conf': ['classification_headers'],
-                    'extras.0': ['extras.0.0'], 'extras.1': ['extras.0.2'],
-                    'extras.2': ['extras.1.0'], 'extras.3': ['extras.1.2'],
-                    'extras.4': ['extras.2.0'], 'extras.5': ['extras.2.2'],
-                    'extras.6': ['extras.3.0'], 'extras.7': ['extras.3.2'],
+                    'extras.0.0': ['extras.0'], 'extras.0.2': ['extras.1'],
+                    'extras.1.0': ['extras.2'], 'extras.1.2': ['extras.3'],
+                    'extras.2.0': ['extras.4'], 'extras.2.2': ['extras.5'],
+                    'extras.3.0': ['extras.6'], 'extras.3.2': ['extras.7'],
                 }
                 pattern = re.compile('|'.join(chain(*replace_map.values())))
 
@@ -211,19 +215,122 @@ class SSD(nn.Module, Model):
     @classmethod
     def extra(cls, in_channels: int = 1024) \
             -> Iterable[nn.Module]:
-        kernel = iter(cycle((1, 3)))
-        for i, feature in enumerate(cls.EXTRAS):
-            if in_channels != 'S':
-                yield nn.Conv2d(in_channels, cls.EXTRAS[i + 1] if feature == 'S' else feature, kernel_size=next(kernel),
-                                stride=(2 if feature == 'S' else 1), padding=(1 if feature == 'S' else 0))
-            in_channels = feature
+        pass
 
     @classmethod
     def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
             -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
-        def gen(count_layer):
-            count, layer = count_layer
-            return nn.Conv2d(layer.out_channels, count * 4, kernel_size=3, padding=1), \
-                nn.Conv2d(layer.out_channels, count * num_classes, kernel_size=3, padding=1)
+        pass
 
-        return tuple(zip(*map(gen, zip(cls.BOXES, list(backbone[21::12]) + extras[1::2]))))
+
+class SSD_VGG16(SSD):
+    BACKBONE = models.vgg16
+    APPENDIX = [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
+    EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 0), (128, 256, 0)]
+    BOXES = [4, 6, 6, 6, 4, 4]
+
+    PRIOR = [
+        (38, 8, (30, 60), (2,)),
+        (19, 16, (60, 111), (2, 3)),
+        (10, 32, (111, 162), (2, 3)),
+        (5, 64, (162, 213), (2, 3)),
+        (3, 100, (213, 264), (2,)),
+        (1, 300, (264, 315), (2,)),
+    ]
+
+    @classmethod
+    def backbone(cls, pretrained):
+        backbone = cls.BACKBONE(pretrained=pretrained).features[:-1]
+        backbone[16].ceil_mode = True
+
+        for i, layer in enumerate([
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(512, 1024, kernel_size=3, padding=6, dilation=6),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(1024, 1024, kernel_size=1),
+            nn.ReLU(inplace=True),
+        ], 30):
+            backbone.add_module(str(i), layer)
+
+        return backbone
+
+    @classmethod
+    def extra(cls, in_channels: int = 1024) \
+            -> Iterable[nn.Module]:
+
+        for mid_channels, out_channels, option in cls.EXTRAS:
+            yield nn.Sequential(
+                nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=mid_channels, out_channels=out_channels, kernel_size=3,
+                          stride=1 + option, padding=option),
+                nn.ReLU(),
+            )
+            in_channels = out_channels
+
+    @classmethod
+    def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
+            -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
+        def gen(count_feature):
+            count, feature = count_feature
+            return nn.Conv2d(feature, count * 4, kernel_size=3, padding=1), \
+                nn.Conv2d(feature, count * num_classes, kernel_size=3, padding=1)
+
+        return tuple(zip(*map(gen, zip(cls.BOXES, chain(
+            map(lambda layer: layer.out_channels, map(lambda index: backbone[index[0] - 2], cls.APPENDIX)),
+            map(lambda module: module[2].out_channels, extras)),
+        ))))
+
+
+class SSD_MOBILENET2_LITE(SSD):
+    BACKBONE = models.mobilenet_v2
+    APPENDIX = [(14, GraphPath('conv', 1), 'GraphPath'), (19, None, None)]
+    EXTRAS = [(512, .2), (256, .25), (256, .5), (64, .25)]
+
+    PRIOR = [
+        (19, 16, (60, 105), (2, 3)),
+        (10, 32, (105, 150), (2, 3)),
+        (5, 64, (150, 195), (2, 3)),
+        (3, 100, (195, 240), (2, 3)),
+        (2, 150, (240, 285), (2, 3)),
+        (1, 300, (285, 330), (2, 3)),
+    ]
+
+    @classmethod
+    def backbone(cls, pretrained):
+        backbone = cls.BACKBONE(pretrained=pretrained).features
+
+        return backbone
+
+    @classmethod
+    def extra(cls, in_channels: int = 1280) \
+            -> Iterable[nn.Module]:
+
+        for feature, ratio in cls.EXTRAS:
+            yield models.mobilenet.InvertedResidual(in_channels, feature, stride=2, expand_ratio=ratio)
+            in_channels = feature
+
+    @classmethod
+    def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int, width_mult: float = 1.0) \
+            -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
+        in_channels = round(576 * width_mult)
+
+        regression_headers = [
+            SeperableConv2d(in_channels, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            SeperableConv2d(1280, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            SeperableConv2d(512, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            nn.Conv2d(in_channels=64, out_channels=6 * 4, kernel_size=1),
+        ]
+
+        classification_headers = [
+            SeperableConv2d(in_channels, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            SeperableConv2d(1280, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            SeperableConv2d(512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=64, out_channels=6 * num_classes, kernel_size=1),
+        ]
+
+        return regression_headers, classification_headers
