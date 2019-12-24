@@ -29,8 +29,8 @@ def main(args: Arguments.parse.Namespace, config: Config):
     num_classes = args.classes or dataset.num_classes
 
     model = Model.get('SSD').new(num_classes, args.batch,
-                                 warping=args.warping, warping_mode=args.warping_mode,
-                                 config=config.data)
+                                 base=args.backbone, config=config.data,
+                                 warping=args.warping, warping_mode=args.warping_mode)
 
     model = executor.init(model, device, args)
 

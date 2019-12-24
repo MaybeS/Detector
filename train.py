@@ -64,12 +64,12 @@ def train(model: nn.Module, dataset: Dataset,
           criterion: nn.Module, optimizer: optim.Optimizer, scheduler: optim.lr_scheduler.Optimizer,
           device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
         -> None:
-    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
+    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker, drop_last=True,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
     iterator, losses = iter(loader), list()
 
     with tqdm(total=args.epoch, initial=args.start_epoch) as tq:
-        for iteration in range(args.start_epoch, args.epoch):
+        for iteration in range(args.start_epoch, args.epoch + 1):
 
             try:
                 images, targets = next(iterator)

@@ -63,9 +63,9 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
 
             image = Variable(torch.from_numpy(transform(image)[0]).permute(2, 0, 1).unsqueeze(0)).to(device)
 
+            detection = np.empty((0, 6), dtype=np.float32)
             detections, *_ = model(image).data
 
-            detection = np.empty((0, 6), dtype=np.float32)
             for klass, boxes in enumerate(detections):
                 candidates = boxes[boxes[:, 0] >= args.thresh]
 
