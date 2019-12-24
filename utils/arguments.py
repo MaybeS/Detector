@@ -29,6 +29,8 @@ class Arguments:
         cls.parser.add_argument('-s', '--seed', required=False, default=42,
                                 help="The answer to life the universe and everything")
 
+        cls.parser.add_argument('--backbone', required=False, type=str, default='VGG16',
+                                help="Backbone of model")
         cls.parser.add_argument('-t', '--type', required=False, type=str, default='amano',
                                 help="Dataset type")
         cls.parser.add_argument('-D', '--dataset', required=False, type=str, default='',
