@@ -7,12 +7,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
+from torch.optim import lr_scheduler as schedulers
 
+from lib.models.mobilenet import MobileNetV1
 from models import Model
 from .loss import Loss
 from .detector import Detector
 from .priorbox import PriorBox
-from .layers import GraphPath, Warping, SeperableConv2d
+from .layers import GraphPath, Warping
 
 
 class SSD(nn.Module, Model):
@@ -33,17 +35,21 @@ class SSD(nn.Module, Model):
             e.g. [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     """
     LOSS = Loss
+    BACKBONE = None
+    SCHEDULER = None
+    APPENDIX = None
+    PRIOR = None
 
     @classmethod
     def new(cls, num_classes: int, batch_size: int, size: Tuple[int, int] = (300, 300),
-            base=None, config=None, **kwargs):
-        base = cls.get(f'SSD_{base}', SSD_VGG16)
+            config=None, **kwargs):
+        assert cls is not SSD, "Create new model instance by subclass caller"
 
-        backbone = base.backbone(pretrained=True)
-        extras = list(base.extra())
-        loc, conf = base.head(backbone, extras, num_classes)
-        appendix = base.APPENDIX
-        prior = base.PRIOR
+        backbone = cls.backbone()
+        extras = list(cls.extra())
+        loc, conf = cls.head(backbone, extras, num_classes)
+        appendix = cls.APPENDIX
+        prior = cls.PRIOR
         config = config or {}
 
         return cls(num_classes, batch_size, size,
@@ -203,10 +209,6 @@ class SSD(nn.Module, Model):
                     'extras.1.0': ['extras.2'], 'extras.1.2': ['extras.3'],
                     'extras.2.0': ['extras.4'], 'extras.2.2': ['extras.5'],
                     'extras.3.0': ['extras.6'], 'extras.3.2': ['extras.7'],
-
-                    # https://github.com/qfgaohao/pytorch-ssd mobilenet weights
-                    '.conv.0.0.': ['.conv.0.'], '.conv.0.1.': ['.conv.1.'],
-                    '.conv.1.': ['.conv.3.'], '.conv.2.': ['.conv.4.'],
                 }
                 pattern = re.compile('|'.join(chain(*replace_map.values())))
 
@@ -221,6 +223,12 @@ class SSD(nn.Module, Model):
             self.conf.apply(self.initializer)
 
     @classmethod
+    def backbone(cls, *args, **kwargs):
+        method, arguments = cls.BACKBONE
+
+        return method(*args, **(kwargs.update(arguments) or kwargs)).features
+
+    @classmethod
     def extra(cls, in_channels: int = 1024) \
             -> Iterable[nn.Module]:
         pass
@@ -232,11 +240,11 @@ class SSD(nn.Module, Model):
 
 
 class SSD_VGG16(SSD):
-    BACKBONE = models.vgg16
+    BACKBONE = models.vgg16, {'pretrained': True}
+    SCHEDULER = schedulers.MultiStepLR, {'milestones': (80, 100), 'gamma': .1}
     APPENDIX = [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 0), (128, 256, 0)]
     BOXES = [4, 6, 6, 6, 4, 4]
-
     PRIOR = [
         (38, 8, (30, 60), (2,)),
         (19, 16, (60, 111), (2, 3)),
@@ -247,8 +255,9 @@ class SSD_VGG16(SSD):
     ]
 
     @classmethod
-    def backbone(cls, pretrained):
-        backbone = cls.BACKBONE(pretrained=pretrained).features[:-1]
+    def backbone(cls, *args, **kwargs):
+        method, arguments = cls.BACKBONE
+        backbone = method(*args, **(kwargs.update(arguments) or kwargs)).features[:-1]
         backbone[16].ceil_mode = True
 
         for i, layer in enumerate([
@@ -290,11 +299,11 @@ class SSD_VGG16(SSD):
         ))))
 
 
-class SSD_MOBILENET2_LITE(SSD):
-    BACKBONE = models.mobilenet_v2
-    APPENDIX = [(14, GraphPath('conv', 1), 'GraphPath'), (19, None, None)]
-    EXTRAS = [(512, .2), (256, .25), (256, .5), (64, .25)]
-
+class SSD_MOBILENET1(SSD):
+    BACKBONE = MobileNetV1, {}
+    SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    APPENDIX = [(12, None, None), (14, None, None)]
+    EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
     PRIOR = [
         (19, 16, (60, 105), (2, 3)),
         (10, 32, (105, 150), (2, 3)),
@@ -305,10 +314,130 @@ class SSD_MOBILENET2_LITE(SSD):
     ]
 
     @classmethod
-    def backbone(cls, pretrained):
-        backbone = cls.BACKBONE(pretrained=pretrained).features
+    def extra(cls, in_channels: int = 1024) \
+            -> Iterable[nn.Module]:
 
-        return backbone
+        for mid_channels, out_channels, option in cls.EXTRAS:
+            yield nn.Sequential(
+                nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=mid_channels, out_channels=out_channels, kernel_size=3,
+                          stride=1 + option, padding=option),
+                nn.ReLU(),
+            )
+            in_channels = out_channels
+
+    @classmethod
+    def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
+            -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
+
+        regression_headers = [
+            nn.Conv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1024, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+        ]
+
+        classification_headers = [
+            nn.Conv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1024, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+        ]
+
+        return regression_headers, classification_headers
+
+
+class SSD_MOBILENET1_LITE(SSD):
+    BACKBONE = MobileNetV1, {}
+    SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    APPENDIX = [(12, None, None), (14, None, None)]
+    EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
+    PRIOR = [
+        (19, 16, (60, 105), (2, 3)),
+        (10, 32, (105, 150), (2, 3)),
+        (5, 64, (150, 195), (2, 3)),
+        (3, 100, (195, 240), (2, 3)),
+        (2, 150, (240, 285), (2, 3)),
+        (1, 300, (285, 330), (2, 3)),
+    ]
+
+    @staticmethod
+    def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0):
+        return nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=kernel_size,
+                      groups=in_channels, stride=stride, padding=padding),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1),
+        )
+
+    @classmethod
+    def extra(cls, in_channels: int = 1024) \
+            -> Iterable[nn.Module]:
+
+        for mid_channels, out_channels, option in cls.EXTRAS:
+            yield nn.Sequential(
+                nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=1),
+                nn.ReLU(),
+                cls.SeperableConv2d(in_channels=mid_channels, out_channels=out_channels, kernel_size=3,
+                                    stride=1 + option, padding=option),
+            )
+            in_channels = out_channels
+
+    @classmethod
+    def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
+            -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
+
+        regression_headers = [
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=1024, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=1),
+        ]
+
+        classification_headers = [
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=1024, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=1),
+        ]
+
+        return regression_headers, classification_headers
+
+
+class SSD_MOBILENET2_LITE(SSD):
+    BACKBONE = models.mobilenet_v2, {'pretrained': True}
+    SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    APPENDIX = [(14, GraphPath('conv', 1), 'GraphPath'), (19, None, None)]
+    EXTRAS = [(512, .2), (256, .25), (256, .5), (64, .25)]
+    PRIOR = [
+        (19, 16, (60, 105), (2, 3)),
+        (10, 32, (105, 150), (2, 3)),
+        (5, 64, (150, 195), (2, 3)),
+        (3, 100, (195, 240), (2, 3)),
+        (2, 150, (240, 285), (2, 3)),
+        (1, 300, (285, 330), (2, 3)),
+    ]
+
+    @staticmethod
+    def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, onnx_compatible=False):
+        ReLU = nn.ReLU if onnx_compatible else nn.ReLU6
+
+        return nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=kernel_size,
+                      groups=in_channels, stride=stride, padding=padding),
+            nn.BatchNorm2d(in_channels),
+            ReLU(),
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1),
+        )
 
     @classmethod
     def extra(cls, in_channels: int = 1280) \
@@ -324,20 +453,20 @@ class SSD_MOBILENET2_LITE(SSD):
         in_channels = round(576 * width_mult)
 
         regression_headers = [
-            SeperableConv2d(in_channels, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(1280, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(512, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(in_channels, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(1280, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(512, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
             nn.Conv2d(in_channels=64, out_channels=6 * 4, kernel_size=1),
         ]
 
         classification_headers = [
-            SeperableConv2d(in_channels, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(1280, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(512, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(1280, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
             nn.Conv2d(in_channels=64, out_channels=6 * num_classes, kernel_size=1),
         ]
 

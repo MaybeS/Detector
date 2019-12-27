@@ -13,6 +13,7 @@ class DataParallel(nn.DataParallel):
 
 class Model(metaclass=Beholder):
     LOSS = None
+    SCHEDULER = None
 
     @classmethod
     def new(cls, *args, **kwargs):
