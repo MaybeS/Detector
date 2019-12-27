@@ -42,7 +42,7 @@ class Arguments:
         cls.parser.add_argument('--classes', required=False, default=0, type=int,
                                 help="Number of class")
 
-        cls.parser.add_argument('--model', required=False, default='weights/vgg16_reducedfc.pth', type=str,
+        cls.parser.add_argument('--model', required=False, default='weights/vgg16-reducedfc.pth', type=str,
                                 help="Path to model")
         cls.parser.add_argument('--thresh', required=False, default=.3, type=float,
                                 help="threshold")
