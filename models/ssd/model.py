@@ -43,14 +43,16 @@ class SSD(nn.Module, Model):
         extras = list(base.extra())
         loc, conf = base.head(backbone, extras, num_classes)
         appendix = base.APPENDIX
-        config.update({'prior': base.PRIOR})
+        prior = base.PRIOR
+        config = config or {}
 
         return cls(num_classes, batch_size, size,
-                   backbone, extras, loc, conf, appendix, config, **kwargs)
+                   backbone, extras, loc, conf, appendix, prior,
+                   config, **kwargs)
 
     def __init__(self, num_classes: int, batch_size: int, size: Tuple[int, int],
-                 backbone, extras, loc, conf, appendix, config=None,
-                 warping: bool = False, warping_mode: str = 'sum'):
+                 backbone, extras, loc, conf, appendix, prior,
+                 config=None, warping: bool = False, warping_mode: str = 'sum'):
         super(SSD, self).__init__()
         self.num_classes = num_classes
         self.batch_size = batch_size
@@ -58,7 +60,7 @@ class SSD(nn.Module, Model):
         self.appendix = appendix
         self.config = config or {}
 
-        self.priors = PriorBox(**self.config, config=self.config.get('prior', None)).forward()
+        self.priors = PriorBox(**self.config, config=prior).forward()
 
         self.features = backbone
         self.extras, self.loc, self.conf = map(nn.ModuleList, (extras, loc, conf))
@@ -170,7 +172,9 @@ class SSD(nn.Module, Model):
     def initializer(m):
         if isinstance(m, nn.Conv2d):
             nn.init.xavier_uniform_(m.weight.data)
-            m.bias.data.zero_()
+
+            if m.bias is not None:
+                m.bias.data.zero_()
 
     def load(self, state_dict: dict = None):
         try:
@@ -187,18 +191,22 @@ class SSD(nn.Module, Model):
 
             # if state dict is legacy pre-trained features
             except RuntimeError:
-                def refine(text, replace_map, pattern):
-                    return pattern.sub(lambda m: next(k for k, v in replace_map.items() if m.group(0) in v), text)
+                def refine(text, replace_map_, pattern_):
+                    return pattern_.sub(lambda m: next(k for k, v in replace_map_.items() if m.group(0) in v), text)
 
                 remove_prefix = ['source_layer_add_ons']
                 replace_map = {
+                    # https://github.com/qfgaohao/pytorch-ssd weights
                     'features': ['vgg', 'base_net'],
-                    'loc': ['regression_headers'],
-                    'conf': ['classification_headers'],
+                    'loc': ['regression_headers'], 'conf': ['classification_headers'],
                     'extras.0.0': ['extras.0'], 'extras.0.2': ['extras.1'],
                     'extras.1.0': ['extras.2'], 'extras.1.2': ['extras.3'],
                     'extras.2.0': ['extras.4'], 'extras.2.2': ['extras.5'],
                     'extras.3.0': ['extras.6'], 'extras.3.2': ['extras.7'],
+
+                    # https://github.com/qfgaohao/pytorch-ssd mobilenet weights
+                    '.conv.0.0.': ['.conv.0.'], '.conv.0.1.': ['.conv.1.'],
+                    '.conv.1.': ['.conv.3.'], '.conv.2.': ['.conv.4.'],
                 }
                 pattern = re.compile('|'.join(chain(*replace_map.values())))
 
