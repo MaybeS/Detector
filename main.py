@@ -28,9 +28,8 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
     num_classes = args.classes or dataset.num_classes
 
-    model = Model.get('SSD').new(num_classes, args.batch,
-                                 base=args.backbone, config=config.data,
-                                 warping=args.warping, warping_mode=args.warping_mode)
+    model = Model.get(f'SSD_{args.backbone}').new(num_classes, args.batch, config=config.data,
+                                                  warping=args.warping, warping_mode=args.warping_mode)
 
     model = executor.init(model, device, args)
 
@@ -38,8 +37,13 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr,
                           momentum=args.momentum, weight_decay=args.decay)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=.1, patience=3)
-    scheduler = None
+
+    if model.SCHEDULER is not None:
+        method, arguments = model.SCHEDULER
+        scheduler = method(optimizer, **arguments)
+
+    else:
+        scheduler = None
 
     criterion = model.loss(num_classes, device=device)
 

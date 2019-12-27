@@ -79,7 +79,7 @@ def train(model: nn.Module, dataset: Dataset,
                 images, targets = next(iterator)
 
                 if loss is not None and scheduler is not None:
-                    scheduler.step(sum(losses) / len(losses))
+                    scheduler.step()
 
             images = Variable(images.to(device), requires_grad=False)
             targets = [Variable(target.to(device), requires_grad=False) for target in targets]
