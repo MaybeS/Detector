@@ -231,17 +231,18 @@ class SSD(nn.Module, Model):
     @classmethod
     def extra(cls, in_channels: int = 1024) \
             -> Iterable[nn.Module]:
-        pass
+        raise NotImplementedError()
 
     @classmethod
     def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
             -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
-        pass
+        raise NotImplementedError()
 
 
 class SSD_VGG16(SSD):
     BACKBONE = models.vgg16, {'pretrained': True}
-    SCHEDULER = schedulers.MultiStepLR, {'milestones': (80, 100), 'gamma': .1}
+    # SCHEDULER = schedulers.MultiStepLR, {'milestones': (80, 100), 'gamma': .1}
+    SCHEDULER = None
     APPENDIX = [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 0), (128, 256, 0)]
     BOXES = [4, 6, 6, 6, 4, 4]
@@ -426,6 +427,7 @@ class SSD_MOBILENET2_LITE(SSD):
         (2, 150, (240, 285), (2, 3)),
         (1, 300, (285, 330), (2, 3)),
     ]
+
 
     @staticmethod
     def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, onnx_compatible=False):
