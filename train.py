@@ -22,25 +22,20 @@ def arguments(parser):
                         help="momentum")
     parser.add_argument('--decay', required=False, default=5e-4, type=float,
                         help="weight decay")
-    parser.add_argument('--epoch', required=False, default=10000, type=int,
+    parser.add_argument('--epoch', required=False, default=100000, type=int,
                         help="epoch")
     parser.add_argument('--start-epoch', required=False, default=0, type=int,
                         help="epoch start")
-    parser.add_argument('--save-epoch', required=False, default=500, type=int,
+    parser.add_argument('--save-epoch', required=False, default=10000, type=int,
                         help="epoch for save")
     parser.add_argument('--worker', required=False, default=4, type=int,
                         help="worker")
 
-    # season 1 warping
     parser.add_argument('--warping', required=False, type=str, default='none',
                         choices=["none", "head", "all", "first"],
                         help="Warping layer apply")
     parser.add_argument('--warping-mode', required=False, type=str, default='sum',
                         choices=['sum', 'average', 'concat'])
-
-    # season 2 pseudo label
-    parser.add_argument('--pseudo', required=False, type=float, default=.0,
-                        help="pseudo label using ratio")
 
 
 def init(model: nn.Module, device: torch.device,
