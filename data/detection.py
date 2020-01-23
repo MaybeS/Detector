@@ -133,7 +133,10 @@ class Detection(data.Dataset, Dataset):
             annotations = pd.read_csv(str(self.detections[index]), header=None).values.astype(np.float32)
             annotations = annotations[annotations[:, 2] - annotations[:, 0] > 50]
 
-        except pd.errors.EmptyDataError:
+            if np.size(annotations, 1) > 4:
+                annotations = annotations[:, -4:]
+
+        except (pd.errors.EmptyDataError, IndexError):
             annotations = np.empty((0, 4), dtype=np.float32)
 
         return annotations, np.zeros(np.size(annotations, 0), dtype=np.uint8)
