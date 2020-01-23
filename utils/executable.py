@@ -20,7 +20,7 @@ class Executable:
             return lambda *args: None
 
     def __call__(self, *args, **kwargs):
-        return getattr(self.module, self.name)(*args, **kwargs)
+        return getattr(self.module, self.name.replace('-', '_'))(*args, **kwargs)
 
     @staticmethod
     def ismain():

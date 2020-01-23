@@ -23,9 +23,6 @@ def main(args: Arguments.parse.Namespace, config: Config):
                                      train=args.command == 'train',
                                      eval_only=args.eval_only)
 
-    if executor.name != 'train':
-        args.batch = 1
-
     num_classes = args.classes or dataset.num_classes
 
     model = Model.get(f'SSD_{args.backbone}').new(num_classes, args.batch, config=config.data,

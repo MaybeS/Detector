@@ -61,6 +61,7 @@ class SSD(nn.Module, Model):
                  config=None, warping: bool = False, warping_mode: str = 'sum'):
         super(SSD, self).__init__()
         self.num_classes = num_classes
+        self.batch_size_ = batch_size
         self.batch_size = batch_size
         self.size = size
         self.appendix = appendix
@@ -90,10 +91,16 @@ class SSD(nn.Module, Model):
 
     def eval(self):
         super(SSD, self).eval()
+        self.batch_size = 1
         Detector.init(self.num_classes, self.batch_size)
 
     def train(self, mode: bool = True):
         super(SSD, self).train(mode)
+        self.batch_size = self.batch_size_
+
+        if not mode:
+            self.batch_size = 1
+            Detector.init(self.num_classes, self.batch_size)
 
     def forward(self, x: torch.Tensor) \
             -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
@@ -302,7 +309,8 @@ class SSD_VGG16(SSD):
 
 class SSD_MOBILENET1(SSD):
     BACKBONE = MobileNetV1, {}
-    SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    SCHEDULER = None
     APPENDIX = [(12, None, None), (14, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
     PRIOR = [
@@ -355,7 +363,8 @@ class SSD_MOBILENET1(SSD):
 
 class SSD_MOBILENET1_LITE(SSD):
     BACKBONE = MobileNetV1, {}
-    SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    SCHEDULER = None
     APPENDIX = [(12, None, None), (14, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
     PRIOR = [
@@ -416,7 +425,8 @@ class SSD_MOBILENET1_LITE(SSD):
 
 class SSD_MOBILENET2_LITE(SSD):
     BACKBONE = models.mobilenet_v2, {'pretrained': True}
-    SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    SCHEDULER = None
     APPENDIX = [(14, GraphPath('conv', 1), 'GraphPath'), (19, None, None)]
     EXTRAS = [(512, .2), (256, .25), (256, .5), (64, .25)]
     PRIOR = [
