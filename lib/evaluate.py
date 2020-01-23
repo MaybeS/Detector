@@ -1,4 +1,5 @@
 from typing import Tuple, Union
+from collections import defaultdict
 
 import torch
 import numpy as np
@@ -51,6 +52,9 @@ class Evaluator:
         self.patch = np.linspace(0, 1, sample_patch)
         self.threshold = threshold
 
+        self.center_total = np.empty((0, 2), dtype=np.int)
+        self.center_positive = np.empty((0, 2), dtype=np.int)
+
         self.TP, self.FP, self.FN = np.zeros((3, sample_patch, n_class), dtype=np.uint32)
         self.gt_counts, self.pd_counts = np.zeros((2, n_class), dtype=np.uint32)
 
@@ -85,6 +89,11 @@ class Evaluator:
                 if pd_number == 0:
                     self.FN[p][klass] += gt_number
                     continue
+
+                # X, Y distribution store
+                centers = np.stack((pd_bboxes[:, ::2].mean(-1), pd_bboxes[:, 1::2].mean(-1))).T.astype(np.int)
+                self.center_total = np.concatenate((self.center_total, centers))
+                self.center_positive = np.concatenate((self.center_positive, centers[pd_mask]))
 
                 true_positive = np.sum(iou[pd_mask][:, gt_class_ids == klass].any(axis=0))
 

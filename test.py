@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from data import Dataset
 from models import DataParallel
 from lib.evaluate import Evaluator
-from lib.augmentation import Augmentation, Base
+from lib.augmentation import Augmentation
 from utils.arguments import Arguments
 
 
@@ -21,6 +21,9 @@ def arguments(parser):
                         help="evaluate only, not detecting")
     parser.add_argument('--overwrite', required=False, default=False, action='store_true',
                         help="overwrite previous result")
+
+    parser.add_argument('--distribution', required=False, default='', type=str,
+                        help="Save figure distribution")
 
 
 def init(model: nn.Module, device: torch.device,
@@ -69,6 +72,16 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
             for klass, boxes in enumerate(detections):
                 candidates = boxes[boxes[:, 0] >= args.thresh]
 
+                # filter out of image
+                candidates = candidates[(
+                    torch.sum((candidates < -1) | (candidates > 2), axis=1) == 0
+                ).nonzero().squeeze(0), :].reshape(-1, 5)
+
+                # filter nan and inf
+                candidates = candidates[(
+                    torch.sum(torch.isinf(candidates) | torch.isnan(candidates), axis=1) == 0
+                ).nonzero().squeeze(0), :].reshape(-1, 5)
+
                 if candidates.size(0) == 0:
                     continue
 
@@ -98,6 +111,34 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
                 gt_boxes.astype(np.float32),
                 None,
             ))
+
+    if args.distribution:
+        from collections import Counter
+        import matplotlib.pyplot as plt
+
+        dest = Path(args.distribution)
+        dest.mkdir(exist_ok=True, parents=True)
+
+        h, w, *_ = dataset.shape
+        total_x, total_y = map(Counter, (evaluator.center_total / (w / 50, h / 50)).astype(np.int).T)
+        positive_x, positive_y = map(Counter, (evaluator.center_positive / (w / 50, h / 50)).astype(np.int).T)
+
+        div = lambda x, y: x / y if y else 0
+        points = np.array([(
+            key,
+            div(positive_x.get(key, 0), total_x.get(key, 0)),
+            div(positive_y.get(key, 0), total_y.get(key, 0)),
+        ) for key in range(50)])
+
+        plt.scatter(*points[:, (0, 1)].T)
+        plt.ylim(0., 1.)
+        plt.xlim(0, 50)
+        plt.savefig(str(dest.joinpath('x.jpg')), dpi=200)
+
+        plt.scatter(*points[:, (2, 0)].T)
+        plt.xlim(0., 1.)
+        plt.ylim(0, 50)
+        plt.savefig(str(dest.joinpath('y.jpg')), dpi=200)
 
     if not args.eval_only:
         aps, precisions, recalls = [], [], []
