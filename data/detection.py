@@ -12,6 +12,7 @@ from data import Dataset
 
 class Detection(data.Dataset, Dataset):
     num_classes = 2
+    class_id = 1
     class_names = ('BACKGROUND',
                    'Car')
 
@@ -43,13 +44,20 @@ class Detection(data.Dataset, Dataset):
                  train: bool = True,
                  eval_only: bool = False):
         self.name = 'Detection'
-        self.root = Path(root)
 
+        path, *options = root.split(':')
+
+        self.root = Path(path)
         self.transform = transform
         self.target_transform = target_transform or self.target_trans
         self.eval_only = eval_only
         self.front_only = True
         self.fail_id = set()
+
+        # Update options
+        for option in options:
+            key, value = map(str.strip, option.split('='))
+            setattr(self, key, int(value))
 
         if eval_only:
             self.images = list(sorted(self.root.glob(f'*{self.IMAGE_EXT}')))
@@ -139,4 +147,4 @@ class Detection(data.Dataset, Dataset):
         except (pd.errors.EmptyDataError, IndexError):
             annotations = np.empty((0, 4), dtype=np.float32)
 
-        return annotations, np.zeros(np.size(annotations, 0), dtype=np.uint8)
+        return annotations, np.full(np.size(annotations, 0), self.class_id, dtype=np.int)
