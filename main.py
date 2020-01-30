@@ -28,6 +28,9 @@ def main(args: Arguments.parse.Namespace, config: Config):
     model = Model.get(f'SSD_{args.backbone}').new(num_classes, args.batch, config=config.data,
                                                   warping=args.warping, warping_mode=args.warping_mode)
 
+    Executable.log('Arguments', vars(args))
+    Executable.log('Config', config.data)
+
     model = executor.init(model, device, args)
 
     Path(args.dest).mkdir(exist_ok=True, parents=True)
@@ -48,6 +51,8 @@ def main(args: Arguments.parse.Namespace, config: Config):
              criterion=criterion, optimizer=optimizer, scheduler=scheduler,     # train args
              transform=Augmentation.get('base')(**config.data),                 # test args
              device=device, args=args)
+
+    Executable.close()
 
 
 if __name__ == '__main__':
