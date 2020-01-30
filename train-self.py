@@ -22,10 +22,11 @@ def arguments(parser):
                         help="unlabeled data")
     parser.add_argument('--unlabeled-gt', required=False, type=str, default='',
                         help="unlabeled data")
-    parser.add_argument('--pseudo', required=False, type=float, default=.0,
-                        help="pseudo label using ratio")
+
     parser.add_argument('--pseudo-step', required=False, type=int, default=10,
                         help="pseudo label using step")
+    parser.add_argument('--pseudo-first-step', required=False, type=int, default=0,
+                        help="pseudo label using step first time only")
 
 
 def init(model: nn.Module, device: torch.device,
@@ -137,6 +138,9 @@ def train_self(model: nn.Module, dataset: Dataset, transform: Augmentation,
     pseudo_loader = data.DataLoader(pseudo_dataset, args.batch, num_workers=args.worker, drop_last=True,
                                     shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
 
+    pseudo_step = args.pseudo_step
+    pseudo_first_step = args.pseudo_first_step
+
     postfix = {}
     train_labeled, train_labeled_count = True, 0
     iterator, losses = iter(loader), list()
@@ -150,14 +154,27 @@ def train_self(model: nn.Module, dataset: Dataset, transform: Augmentation,
                 # generate pseudo label
                 train_labeled_count += 1
 
-                if train_labeled and train_labeled_count > args.pseudo_step:
-                    result = generate_pseudo(model, pseudo_loader.dataset, transform,
-                                             device, args, iteration=iteration)
+                if train_labeled:
+                    if pseudo_first_step:
+                        if train_labeled_count > pseudo_first_step:
+                            result = generate_pseudo(model, pseudo_loader.dataset, transform,
+                                                     device, args, iteration=iteration)
 
-                    train_labeled_count = 0
-                    postfix.update(result)
-                    iterator = iter(pseudo_loader)
+                            pseudo_first_step = train_labeled_count = 0
+                            postfix.update(result)
+                            iterator = iter(pseudo_loader)
+                        else:
+                            iterator = iter(loader)
+                    else:
+                        if train_labeled_count > pseudo_step:
+                            result = generate_pseudo(model, pseudo_loader.dataset, transform,
+                                                     device, args, iteration=iteration)
 
+                            train_labeled_count = 0
+                            postfix.update(result)
+                            iterator = iter(pseudo_loader)
+                        else:
+                            iterator = iter(loader)
                 else:
                     iterator = iter(loader)
 
