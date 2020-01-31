@@ -56,6 +56,8 @@ class Arguments:
 
         args = cls.parser.parse_args()
 
+        Path(args.dest).mkdir(exist_ok=True, parents=True)
+
         # Init logger
         logger_std = logging.StreamHandler(stdout)
         logger_std.setFormatter(logging.Formatter(fmt="%(name)s %(levelname)-8s: %(message)s", datefmt='%H:%M:%S'))

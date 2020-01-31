@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import torch
 import torch.optim as optim
 
@@ -32,8 +30,6 @@ def main(args: Arguments.parse.Namespace, config: Config):
     Executable.log('Config', config.data)
 
     model = executor.init(model, device, args)
-
-    Path(args.dest).mkdir(exist_ok=True, parents=True)
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr,
                           momentum=args.momentum, weight_decay=args.decay)
