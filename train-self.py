@@ -75,6 +75,8 @@ def generate_pseudo(model: nn.Module, dataset: Dataset, transform: Augmentation,
         detections, *_ = model(image).data
 
         for klass, boxes in enumerate(detections):
+            if klass != dataset.class_id:
+                continue
             candidates = boxes[boxes[:, 0] >= args.thresh]
             # filter out of image
             candidates = candidates[(
@@ -166,7 +168,7 @@ def train_self(model: nn.Module, dataset: Dataset, transform: Augmentation,
                         else:
                             iterator = iter(loader)
                     else:
-                        if train_labeled_count > pseudo_step:
+                        if train_labeled_count >= pseudo_step:
                             result = generate_pseudo(model, pseudo_loader.dataset, transform,
                                                      device, args, iteration=iteration)
 
