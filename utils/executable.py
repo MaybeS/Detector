@@ -22,29 +22,34 @@ class Executable:
         else:
             return lambda *args: None
 
-    def init(self, *args, **kwargs):
-        self.logger.info('Model initializing ...')
-        results = getattr(self.module, 'init')(*args, **kwargs)
+    def init(self, model, device, args):
+        self.log('Model initializing ...')
+        self.log('Arguments', vars(args))
+        results = getattr(self.module, 'init')(model, device, args)
 
-        self.logger.info('Model initialized')
+        self.log('Model initialized')
         return results
 
     def __call__(self, *args, **kwargs):
-        self.logger.info(f'Model execute {self.command}')
+        self.log(f'Model execute {self.command}')
         results = getattr(self.module, self.name)(*args, **kwargs)
 
-        self.logger.info(f'Model execution done!')
+        self.log(f'Model execution done!')
         return results
 
     @classmethod
-    def log(cls, prefix, target, level: int = logging.INFO):
-        cls.logger.log(level, f' {prefix} '.center(80, '='))
+    def log(cls, prefix: str, target: str = None, level: int = logging.INFO):
+        if target is None:
+            cls.logger.log(level, prefix)
 
-        if isinstance(target, dict):
-            for key, value in target.items():
-                cls.logger.log(level, f'{pformat(key).ljust(16)}: {pformat(value)}')
         else:
-            cls.logger.log(level, pformat(target))
+            cls.logger.log(level, f' {prefix} '.center(80, '='))
+
+            if isinstance(target, dict):
+                for key, value in target.items():
+                    cls.logger.log(level, f'{pformat(key).ljust(16)}: {pformat(value)}')
+            else:
+                cls.logger.log(level, pformat(target))
 
     @classmethod
     def close(cls):

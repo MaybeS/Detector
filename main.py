@@ -15,7 +15,6 @@ def main(args: Arguments.parse.Namespace, config: Config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     transform = Augmentation.get(args.type)(**config.data)
-
     dataset = Dataset.get(args.type)(args.dataset,
                                      transform=transform,
                                      train=args.command == 'train',
@@ -23,11 +22,10 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
     num_classes = args.classes or dataset.num_classes
 
+    Executable.log('Config', config.data)
     model = Model.get(f'SSD_{args.backbone}').new(num_classes, args.batch, config=config.data,
                                                   warping=args.warping, warping_mode=args.warping_mode)
-
-    Executable.log('Arguments', vars(args))
-    Executable.log('Config', config.data)
+    Executable.log('Model', model)
 
     model = executor.init(model, device, args)
 

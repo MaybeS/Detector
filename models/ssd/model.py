@@ -17,7 +17,7 @@ from .priorbox import PriorBox
 from .layers import GraphPath, Warping
 
 
-class SSD(nn.Module, Model):
+class SSD(Model):
     """Single Shot Multibox Architecture
     The network is composed of a base VGG network followed by the
     added multibox conv layers.  Each multibox layer branches into
@@ -91,15 +91,12 @@ class SSD(nn.Module, Model):
 
     def eval(self):
         super(SSD, self).eval()
-        self.batch_size = 1
         Detector.init(self.num_classes, self.batch_size)
 
     def train(self, mode: bool = True):
         super(SSD, self).train(mode)
-        self.batch_size = self.batch_size_
 
         if not mode:
-            self.batch_size = 1
             Detector.init(self.num_classes, self.batch_size)
 
     def forward(self, x: torch.Tensor) \
