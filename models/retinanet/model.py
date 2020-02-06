@@ -12,7 +12,7 @@ from .anchors import Anchors
 from .loss import FocalLoss
 
 
-class RetinaNet(nn.Module, Model):
+class RetinaNet(Model):
     LOSS = FocalLoss
 
     BLOCK_TYPES = {18: BasicBlock, 34: BasicBlock, 50: Bottleneck, 101: Bottleneck, 152: Bottleneck}
