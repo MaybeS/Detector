@@ -1,3 +1,4 @@
+from typing import Iterator
 from pathlib import Path
 
 from tqdm import tqdm
@@ -58,7 +59,7 @@ def init(model: nn.Module, device: torch.device,
 def train(model: nn.Module, dataset: Dataset,
           criterion: nn.Module, optimizer: optim.Optimizer, scheduler: optim.lr_scheduler.Optimizer,
           device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
-        -> None:
+        -> Iterator[dict]:
     loader = data.DataLoader(dataset, args.batch, num_workers=args.worker, drop_last=True,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
     iterator, losses = iter(loader), list()
@@ -91,9 +92,14 @@ def train(model: nn.Module, dataset: Dataset,
             if torch.isnan(loss):
                 print(f'NaN detected in {iteration}')
 
+            tq.set_postfix(loss=loss.item())
+            tq.update(1)
+
             if args.save_epoch and not (iteration % args.save_epoch):
                 torch.save(model.state_dict(),
                            str(Path(args.dest).joinpath(f'{args.name}-{iteration:06}.pth')))
 
-            tq.set_postfix(loss=loss.item())
-            tq.update(1)
+                yield {
+                    "iteration": iteration,
+                    "loss": loss.item(),
+                }
