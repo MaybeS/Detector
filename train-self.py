@@ -1,3 +1,4 @@
+from typing import Iterator
 from pathlib import Path
 
 from tqdm import tqdm
@@ -132,7 +133,7 @@ def generate_pseudo(model: nn.Module, dataset: Dataset, transform: Augmentation,
 def train_self(model: nn.Module, dataset: Dataset, transform: Augmentation,
                criterion: nn.Module, optimizer: optim.Optimizer, scheduler: optim.lr_scheduler.Optimizer,
                device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
-        -> None:
+        -> Iterator[dict]:
     loader = data.DataLoader(dataset, args.batch, num_workers=args.worker, drop_last=True,
                              shuffle=True, collate_fn=Dataset.collate, pin_memory=True)
 
@@ -202,11 +203,16 @@ def train_self(model: nn.Module, dataset: Dataset, transform: Augmentation,
             if torch.isnan(loss):
                 print(f'NaN detected in {iteration}')
 
+            postfix['loss'] = loss.item()
+            tq.set_postfix(**postfix)
+            tq.update(1)
+
             if args.save_epoch and not (iteration % args.save_epoch):
                 torch.save(model.state_dict(),
                            str(Path(args.dest).joinpath(f'{args.name}-{iteration:06}.pth')))
 
-            postfix['loss'] = loss.item()
+                yield {
+                    "iteration": iteration,
+                    **postfix
+                }
 
-            tq.set_postfix(**postfix)
-            tq.update(1)
