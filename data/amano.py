@@ -5,12 +5,11 @@ import numpy as np
 import pandas as pd
 import skimage
 import torch
-import torch.utils.data as data
 
 from data import Dataset
 
 
-class Amano(data.Dataset, Dataset):
+class Amano(Dataset):
     num_classes = 2
 
     IMAGE_DIR = 'images'

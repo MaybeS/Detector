@@ -5,16 +5,15 @@ import numpy as np
 import pandas as pd
 import skimage
 import torch
-import torch.utils.data as data
 
 from data import Dataset
 
 
-class Detection(data.Dataset, Dataset):
-    num_classes = 2
+class Detection(Dataset):
     class_id = 1
+    num_classes = 2
     class_names = ('BACKGROUND',
-                   'Car')
+                   'Object')
 
     IMAGE_DIR = 'images'
     IMAGE_EXT = '.jpg'
@@ -79,6 +78,7 @@ class Detection(data.Dataset, Dataset):
 
     def __getitem__(self, index):
         item = self.pull_item(index)
+
         return item
 
     def __len__(self):

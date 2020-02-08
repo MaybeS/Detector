@@ -10,7 +10,7 @@ import torch.utils.data as data
 from data import Dataset
 
 
-class VOC(data.Dataset, Dataset):
+class VOC(Dataset):
     num_classes = 21
     class_names = ('BACKGROUND',
                    'aeroplane', 'bicycle', 'bird', 'boat',
