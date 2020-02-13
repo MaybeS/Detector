@@ -32,10 +32,10 @@ class Executable:
 
     def __call__(self, *args, **kwargs):
         self.log(f'Model execute {self.command}')
-        results = getattr(self.module, self.name)(*args, **kwargs)
+        for dump in getattr(self.module, self.name)(*args, **kwargs):
+            self.log('TRAIN', dump)
 
         self.log(f'Model execution done!')
-        return results
 
     @classmethod
     def log(cls, prefix: str, target: str = None, level: int = logging.INFO):
