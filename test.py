@@ -46,6 +46,7 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
         -> None:
     evaluator = Evaluator(n_class=dataset.num_classes)
     dest = Path(args.dest)
+    result = {}
 
     for index in tqdm(range(len(dataset))):
         if not args.eval_only:
@@ -164,10 +165,13 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
         print(f'Ground Truths: {gt_counts} / Predictions: {pd_counts}')
 
         with open(str(dest.joinpath('results.json')), 'w') as f:
-            json.dump({
+            result.update({
                 'mAP': float(np.mean(aps)),
                 'Precision': float(np.mean(precisions)),
                 'Recall': float(np.mean(recalls)),
                 'GT': int(gt_counts),
                 'PD': int(pd_counts),
-            }, f)
+            })
+            json.dump(result, f)
+
+    yield result
