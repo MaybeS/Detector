@@ -31,7 +31,7 @@ class PriorBox(object):
                 for aspect_ratio, step, feature_map, min_size, max_size in zip(
                     aspect_ratios or [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
                     steps or [8, 16, 32, 64, 100, 300],
-                    feature_map or [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)],
+                    feature_map or [[38, 38], [19, 19], [10, 10], [5, 5], [3, 3], [1, 1]],
                     min_sizes or [21, 45, 99, 153, 207, 261],
                     max_sizes or [45, 99, 153, 207, 261, 315],
                 )
