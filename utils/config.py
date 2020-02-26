@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 
 class Config:
@@ -7,8 +6,7 @@ class Config:
     aspect_ratios = [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
     num_priors = 6
     variance = [.1, .2]
-    feature_map_x = [38, 19, 10, 5, 3, 1]
-    feature_map_y = [38, 19, 10, 5, 3, 1]
+    feature_map = [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)],
     min_sizes = [21, 45, 99, 153, 207, 261]
     max_sizes = [45, 99, 153, 207, 261, 315]
     steps = [8, 16, 32, 64, 100, 300]
@@ -24,11 +22,13 @@ class Config:
         "patience": 3,
     }
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, arguments):
         if path is not None:
             try:
                 with open(path) as f:
                     for key, value in json.load(f).items():
+                        if hasattr(arguments, key):
+                            setattr(arguments, key, value)
                         self.update(key, value)
             except (FileNotFoundError, RuntimeError) as e:
                 print(f'Configfile {path} is not exists or can not open')

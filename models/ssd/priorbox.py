@@ -25,13 +25,13 @@ class PriorBox(object):
         self.size_ = size[0]
         self.variance = variance or [.1, .2]
 
-        if config is None:
+        if all((variance, aspect_ratios, steps, feature_map, min_sizes, max_sizes)):
             self.config = [
                 PriorSpec(feature_map, step, (min_size, max_size), aspect_ratio)
                 for aspect_ratio, step, feature_map, min_size, max_size in zip(
                     aspect_ratios or [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
                     steps or [8, 16, 32, 64, 100, 300],
-                    feature_map or [38, 19, 10, 5, 3, 1],
+                    feature_map or [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)],
                     min_sizes or [21, 45, 99, 153, 207, 261],
                     max_sizes or [45, 99, 153, 207, 261, 315],
                 )
@@ -56,7 +56,7 @@ class PriorBox(object):
             scale = self.size_ / spec.shrinkage
             box_min, box_max = spec.box_sizes
 
-            for j, i in product(range(spec.feature_map_size), repeat=2):
+            for j, i in product(*map(range, spec.feature_map_size)):
                 x_center, y_center = (i + .5) / scale, (j + .5) / scale
 
                 # small sized square box

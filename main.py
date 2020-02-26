@@ -51,7 +51,7 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
 if __name__ == '__main__':
     arguments = Arguments()
-    config = Config(arguments.config)
+    config = Config(arguments.config, arguments)
     config.sync(vars(arguments))
 
     seed(arguments.seed)

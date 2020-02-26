@@ -109,7 +109,7 @@ class ToPercentCoords(object):
 
 class Resize(object):
     def __init__(self, size=(300, 300)):
-        self.size = size
+        self.size = tuple(size)
 
     def __call__(self, image, boxes=None, labels=None):
         if image.shape[:2] != self.size:
