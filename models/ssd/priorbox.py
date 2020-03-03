@@ -52,7 +52,7 @@ class PriorBox(object):
             feat_size = feat_size if isinstance(feat_size, Iterable) else (feat_size, feat_size)
 
             for j, i in product(*map(range, feat_size)):
-                x_center, y_center = (i + .5, j + .5) / scale
+                x_center, y_center = (j + .5, i + .5) / scale
 
                 # small sized square box
                 size = box_min
