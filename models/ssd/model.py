@@ -49,25 +49,24 @@ class SSD(Model):
         extras = list(cls.extra())
         loc, conf = cls.head(backbone, extras, num_classes)
         appendix = cls.APPENDIX
-        prior = cls.PRIOR
-        config = config or {}
+        config = config
 
         return cls(num_classes, batch_size, size,
-                   backbone, extras, loc, conf, appendix, prior,
+                   backbone, extras, loc, conf, appendix,
                    config, **kwargs)
 
     def __init__(self, num_classes: int, batch_size: int, size: Tuple[int, int],
-                 backbone, extras, loc, conf, appendix, prior,
-                 config=None, warping: bool = False, warping_mode: str = 'sum'):
+                 backbone, extras, loc, conf, appendix, config,
+                 warping: bool = False, warping_mode: str = 'sum'):
         super(SSD, self).__init__()
         self.num_classes = num_classes
         self.batch_size_ = batch_size
         self.batch_size = batch_size
         self.size = size
         self.appendix = appendix
-        self.config = config or {}
+        self.config = config
 
-        self.priors = PriorBox(**self.config, config=prior).forward()
+        self.priors = PriorBox(**self.config).forward()
 
         self.features = backbone
         self.extras, self.loc, self.conf = map(nn.ModuleList, (extras, loc, conf))

@@ -44,8 +44,6 @@ class Arguments:
                                 help="Path to config file")
         cls.parser.add_argument('--classes', required=False, default=0, type=int,
                                 help="Number of class")
-        cls.parser.add_argument('--size', required=False, default=(300, 300), nargs='+', type=int,
-                                help="Size")
 
         cls.parser.add_argument('--model', required=False, default='weights/vgg16-reducedfc.pth', type=str,
                                 help="Path to model")

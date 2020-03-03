@@ -10,25 +10,32 @@ from utils.arguments import Arguments
 from utils.config import Config
 
 
-def main(args: Arguments.parse.Namespace, config: Config):
+def main(args: Arguments.parse.Namespace):
+    MODEL = Model.get(f'SSD_{args.backbone}')
+
+    config = Config(args.config, MODEL.PRIOR)
+    config.sync(vars(args))
+    Executable.log('Config', config.dump)
+
     executor = Executable.s[args.command]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    transform = Augmentation.get(args.type)(**config.data)
+    # Create Dataset
+    transform = Augmentation.get(args.type)(**config.dump)
     dataset = Dataset.get(args.type)(args.dataset,
                                      transform=transform,
                                      train=args.command == 'train',
                                      eval_only=args.eval_only)
 
+    # Create Model
     num_classes = args.classes or dataset.num_classes
-
-    Executable.log('Config', config.data)
-    model = Model.get(f'SSD_{args.backbone}').new(num_classes, args.batch, config=config.data,
-                                                  warping=args.warping, warping_mode=args.warping_mode)
+    model = MODEL.new(num_classes, args.batch, config=config.dump)
     Executable.log('Model', model)
 
+    # Initialize Model
     model = executor.init(model, device, args)
 
+    # Set optimizer, scheduler and criterion
     optimizer = optim.SGD(model.parameters(), lr=args.lr,
                           momentum=args.momentum, weight_decay=args.decay)
 
@@ -41,9 +48,10 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
     criterion = model.loss(num_classes, device=device)
 
+    # Run main script
     executor(model, dataset=dataset,
-             criterion=criterion, optimizer=optimizer, scheduler=scheduler,     # train args
-             transform=Augmentation.get('base')(**config.data),                 # test args
+             criterion=criterion, optimizer=optimizer, scheduler=scheduler,  # train args
+             transform=Augmentation.get('base')(**config.dump),  # test args
              device=device, args=args)
 
     Executable.close()
@@ -51,8 +59,6 @@ def main(args: Arguments.parse.Namespace, config: Config):
 
 if __name__ == '__main__':
     arguments = Arguments()
-    config = Config(arguments.config, arguments)
-    config.sync(vars(arguments))
 
     seed(arguments.seed)
-    main(arguments, config)
+    main(arguments)

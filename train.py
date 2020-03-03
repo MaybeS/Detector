@@ -17,7 +17,7 @@ from utils.arguments import Arguments
 def arguments(parser):
     parser.add_argument('--batch', required=False, default=32, type=int,
                         help="batch")
-    parser.add_argument('--lr', required=False, default=.001, type=float,
+    parser.add_argument('--lr', required=False, default=.0001, type=float,
                         help="learning rate")
     parser.add_argument('--momentum', required=False, default=.9, type=float,
                         help="momentum")
