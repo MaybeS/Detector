@@ -3,6 +3,7 @@ from math import sqrt
 from itertools import product
 from collections import namedtuple
 
+import numpy as np
 import torch
 
 PriorSpec = namedtuple('Spec', ['feature_map_size', 'shrinkage', 'box_sizes', 'aspect_ratios'])
@@ -20,8 +21,7 @@ class PriorBox(object):
                  clip: bool = True, **kwargs):
         super(PriorBox, self).__init__()
 
-        self.size = size
-        self.size_ = size[0]
+        self.size = np.array(size)
         self.variance = variance or [.1, .2]
 
         self.config = [
@@ -45,28 +45,28 @@ class PriorBox(object):
         priors = []
 
         for spec in self.config:
-            scale = self.size_ / spec.shrinkage
+            scale = self.size / spec.shrinkage
             box_min, box_max = spec.box_sizes
 
             feat_size = spec.feature_map_size
             feat_size = feat_size if isinstance(feat_size, Iterable) else (feat_size, feat_size)
 
             for j, i in product(*map(range, feat_size)):
-                x_center, y_center = (i + .5) / scale, (j + .5) / scale
+                x_center, y_center = (i + .5, j + .5) / scale
 
                 # small sized square box
                 size = box_min
-                h = w = size / self.size_
+                h, w = size / self.size
                 priors.append([x_center, y_center, w, h])
 
                 # big sized square box
                 size = sqrt(box_max * box_min)
-                h = w = size / self.size_
+                h, w = size / self.size
                 priors.append([x_center, y_center, w, h])
 
                 # change h/w ratio of the small sized box
                 size = box_min
-                h = w = size / self.size_
+                h, w = size / self.size
                 for ratio in map(sqrt, spec.aspect_ratios):
                     priors.append([x_center, y_center, w * ratio, h / ratio])
                     priors.append([x_center, y_center, w / ratio, h * ratio])

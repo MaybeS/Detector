@@ -485,7 +485,7 @@ class Detection(Augmentation):
         self.augment = Compose([
             ConvertFromInts(),
             ToAbsoluteCoords(),
-            # PhotometricDistort(),
+            PhotometricDistort(),
             # Expand(self.mean),
             # RandomSampleCrop(),
             RandomMirror(horizontal=horizontal, vertical=vertical),
