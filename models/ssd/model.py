@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
-from torch.optim import lr_scheduler as schedulers
 
 from lib.models.mobilenet import MobileNetV1
 from models import Model
@@ -36,7 +35,6 @@ class SSD(Model):
     """
     LOSS = Loss
     BACKBONE = None
-    SCHEDULER = None
     APPENDIX = None
     PRIOR = None
 
@@ -245,7 +243,6 @@ class SSD(Model):
 class SSD_VGG16(SSD):
     BACKBONE = models.vgg16, {'pretrained': True}
     # SCHEDULER = schedulers.MultiStepLR, {'milestones': (80, 100), 'gamma': .1}
-    SCHEDULER = None
     APPENDIX = [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 0), (128, 256, 0)]
     BOXES = [4, 6, 6, 6, 4, 4]
@@ -306,7 +303,6 @@ class SSD_VGG16(SSD):
 class SSD_MOBILENET1(SSD):
     BACKBONE = MobileNetV1, {}
     # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
-    SCHEDULER = None
     APPENDIX = [(12, None, None), (14, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
     PRIOR = [
@@ -360,7 +356,6 @@ class SSD_MOBILENET1(SSD):
 class SSD_MOBILENET1_LITE(SSD):
     BACKBONE = MobileNetV1, {}
     # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
-    SCHEDULER = None
     APPENDIX = [(12, None, None), (14, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
     PRIOR = [
@@ -422,7 +417,6 @@ class SSD_MOBILENET1_LITE(SSD):
 class SSD_MOBILENET2_LITE(SSD):
     BACKBONE = models.mobilenet_v2, {'pretrained': True}
     # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
-    SCHEDULER = None
     APPENDIX = [(14, GraphPath('conv', 1), 'GraphPath'), (19, None, None)]
     EXTRAS = [(512, .2), (256, .25), (256, .5), (64, .25)]
     PRIOR = [

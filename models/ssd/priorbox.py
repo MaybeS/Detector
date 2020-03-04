@@ -49,24 +49,21 @@ class PriorBox(object):
             box_min, box_max = spec.box_sizes
 
             feat_size = spec.feature_map_size
-            feat_size = feat_size if isinstance(feat_size, Iterable) else (feat_size, feat_size)
+            feat_size = reversed(feat_size) if isinstance(feat_size, Iterable) else (feat_size, feat_size)
 
             for j, i in product(*map(range, feat_size)):
-                x_center, y_center = (j + .5, i + .5) / scale
+                x_center, y_center = (i + .5, j + .5) / scale
 
                 # small sized square box
-                size = box_min
-                h, w = size / self.size
+                w, h = box_min / self.size
                 priors.append([x_center, y_center, w, h])
 
                 # big sized square box
-                size = sqrt(box_max * box_min)
-                h, w = size / self.size
+                w, h = sqrt(box_max * box_min) / self.size
                 priors.append([x_center, y_center, w, h])
 
-                # change h/w ratio of the small sized box
-                size = box_min
-                h, w = size / self.size
+                # change w, h ratio of the small sized box
+                w, h = box_min / self.size
                 for ratio in map(sqrt, spec.aspect_ratios):
                     priors.append([x_center, y_center, w * ratio, h / ratio])
                     priors.append([x_center, y_center, w / ratio, h * ratio])

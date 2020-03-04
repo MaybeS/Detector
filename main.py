@@ -1,5 +1,4 @@
 import torch
-import torch.optim as optim
 
 from models import Model
 from data.dataset import Dataset
@@ -36,15 +35,15 @@ def main(args: Arguments.parse.Namespace):
     model = executor.init(model, device, args)
 
     # Set optimizer, scheduler and criterion
-    optimizer = optim.SGD(model.parameters(), lr=args.lr,
-                          momentum=args.momentum, weight_decay=args.decay)
+    optim, optim_args = model.OPTIMIZER
+    optimizer = optim(model.parameters(), **(optim_args.update({
+        'lr': args.lr,
+        'momentum': args.momentum,
+        'weight_decay': args.decay,
+    }) or optim_args))
 
-    if model.SCHEDULER is not None:
-        method, arguments = model.SCHEDULER
-        scheduler = method(optimizer, **arguments)
-
-    else:
-        scheduler = None
+    sched, sched_args = model.SCHEDULER
+    scheduler = sched(optimizer, **sched_args)
 
     criterion = model.loss(num_classes, device=device)
 

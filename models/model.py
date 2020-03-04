@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch.optim as optim
 
 from utils.beholder import Beholder
 
@@ -13,7 +14,8 @@ class DataParallel(nn.DataParallel):
 
 class Model(nn.Module, metaclass=Beholder):
     LOSS = None
-    SCHEDULER = None
+    OPTIMIZER = optim.SGD, {'lr': .0001, "momentum": .9, "weight_decay": 5e-4}
+    SCHEDULER = lambda _: None, {}
     batch_size = 1
 
     @classmethod
