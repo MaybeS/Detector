@@ -80,15 +80,17 @@ class SSD(Model):
             raise RuntimeError('use detect after enable eval mode')
 
         with torch.no_grad():
-            from lib.box import decode, nms
+            from lib.box import decode
+            from torchvision.ops import nms
 
             confidences = F.softmax(confidences, dim=-1)
             num_priors = prior_boxes.size(0)
 
-            output = torch.zeros(self.batch_size, self.num_classes, self.config.nms_top_k, 5) if self.config.nms else None
+            output = torch.zeros(self.batch_size, self.num_classes, self.config.nms_top_k, 5) \
+                if self.config.nms else None
             confidences = confidences.view(self.batch_size, num_priors, self.num_classes).transpose(2, 1)
 
-            # Decode predictions into bboxes.
+            # Decode predictions into bounding boxes.
             for batch_index, (location, confidence) in enumerate(zip(locations, confidences)):
                 decoded_boxes = decode(location, prior_boxes, self.config.variance)
                 conf_scores = confidence.clone()
@@ -105,10 +107,16 @@ class SSD(Model):
                         loc_mask = conf_mask.unsqueeze(1).expand_as(decoded_boxes)
                         boxes = decoded_boxes[loc_mask].view(-1, 4)
 
-                        ids, count = nms(boxes, scores, self.config.nms_thresh, self.config.nms_top_k)
-                        output[batch_index, class_index, :count] = torch.cat((
-                            scores[ids[:count]].unsqueeze(1),
-                            boxes[ids[:count]]
+                        # ids, count = nms(boxes, scores, self.config.nms_thresh, self.config.nms_top_k)
+                        # output[batch_index, class_index, :count] = torch.cat((
+                        #     scores[ids[:count]].unsqueeze(1),
+                        #     boxes[ids[:count]]
+                        # ), dim=1)
+                        ids = nms(boxes, scores, self.config.nms_thresh)
+                        (size, *_) = ids.size()
+                        output[batch_index, class_index, :min(size, self.config.nms_top_k)] = torch.cat((
+                            scores[ids[:self.config.nms_top_k]].unsqueeze(1),
+                            boxes[ids[:self.config.nms_top_k]]
                         ), dim=1)
 
                 # skip nms process for ignore torch script export error
