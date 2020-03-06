@@ -25,12 +25,14 @@ class BIFPN(nn.Module):
 
         if end_level == -1:
             self.backbone_end_level = self.num_ins
-            assert num_outs >= self.num_ins - start_level
+            assert num_outs >= self.backbone_end_level - start_level
+
         else:
             # if end_level < inputs, no extra level is allowed
             self.backbone_end_level = end_level
             assert end_level <= len(in_channels)
-            assert num_outs == end_level - start_level
+            assert num_outs == self.backbone_end_level - start_level
+
         self.start_level = start_level
         self.end_level = end_level
         self.add_extra_convs = add_extra_convs
@@ -40,16 +42,11 @@ class BIFPN(nn.Module):
         self.fpn_convs = nn.ModuleList()
         self.stack_bifpn_convs = nn.ModuleList()
 
-        for i in range(self.start_level, self.backbone_end_level):
-            l_conv = ConvModule(
-                in_channels[i],
-                out_channels,
-                1,
-                conv_cfg=conv_cfg,
-                norm_cfg=norm_cfg if not self.no_norm_on_lateral else None,
-                activation=self.activation,
-                inplace=False)
-            self.lateral_convs.append(l_conv)
+        self.lateral_convs = nn.ModuleList((ConvModule(
+                in_channels[i], out_channels, kernel_size=1,
+                conv_cfg=conv_cfg, norm_cfg=norm_cfg if not self.no_norm_on_lateral else None,
+                activation=self.activation, inplace=False)
+            for i in range(self.start_level, self.backbone_end_level)))
 
         for ii in range(stack):
             self.stack_bifpn_convs.append(BiFPNModule(channels=out_channels,
@@ -172,9 +169,7 @@ class BiFPNModule(nn.Module):
         # build top-down
         idx_bifpn = 0
         pathtd = inputs
-        inputs_clone = []
-        for in_tensor in inputs:
-            inputs_clone.append(in_tensor.clone())
+        clones = [tensor.clone() for tensor in inputs]
 
         for i in range(levels - 1, 0, -1):
             pathtd[i - 1] = (w1[0, i-1]*pathtd[i - 1] + w1[1, i-1]*F.interpolate(
@@ -184,7 +179,7 @@ class BiFPNModule(nn.Module):
         # build down-top
         for i in range(0, levels - 2, 1):
             pathtd[i + 1] = (w2[0, i] * pathtd[i + 1] + w2[1, i] * F.max_pool2d(pathtd[i], kernel_size=2) +
-                             w2[2, i] * inputs_clone[i + 1])/(w2[0, i] + w2[1, i] + w2[2, i] + self.eps)
+                             w2[2, i] * clones[i + 1])/(w2[0, i] + w2[1, i] + w2[2, i] + self.eps)
             pathtd[i + 1] = self.bifpn_convs[idx_bifpn](pathtd[i + 1])
             idx_bifpn = idx_bifpn + 1
 

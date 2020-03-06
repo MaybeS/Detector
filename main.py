@@ -10,9 +10,9 @@ from utils.config import Config
 
 
 def main(args: Arguments.parse.Namespace):
-    MODEL = Model.get(f'SSD_{args.backbone}')
+    MODEL = Model.get(args.network).get(args.backbone)
 
-    config = Config(args.config, MODEL.PRIOR)
+    config = Config(args.config, args.network, MODEL)
     config.sync(vars(args))
     Executable.log('Config', config.dump)
 
@@ -28,7 +28,7 @@ def main(args: Arguments.parse.Namespace):
 
     # Create Model
     num_classes = args.classes or dataset.num_classes
-    model = MODEL.new(num_classes, args.batch, config=config.dump)
+    model = MODEL.new(num_classes, args.batch, config=config)
     Executable.log('Model', model)
 
     # Initialize Model
@@ -43,7 +43,8 @@ def main(args: Arguments.parse.Namespace):
     }) or optim_args))
 
     sched, sched_args = model.SCHEDULER
-    scheduler = sched(optimizer, **sched_args)
+    scheduler = sched(optimizer, **(sched_args.update({
+    }) or sched_args))
 
     criterion = model.loss(num_classes, device=device)
 

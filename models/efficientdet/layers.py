@@ -1,7 +1,8 @@
 import re
 import math
-import collections
 import warnings
+from collections import namedtuple
+from typing import Tuple
 from functools import partial
 
 import numpy as np
@@ -148,75 +149,56 @@ class ClassificationModel(nn.Module):
 
 
 class Anchors(nn.Module):
-    def __init__(self, pyramid_levels=None, strides=None, sizes=None, ratios=None, scales=None):
+    def __init__(self, size: Tuple[int, int],
+                 pyramid_levels=None, strides=None, sizes=None, ratios=None, scales=None):
         super(Anchors, self).__init__()
 
-        if pyramid_levels is None:
-            self.pyramid_levels = [3, 4, 5, 6, 7]
-        if strides is None:
-            self.strides = [2 ** x for x in self.pyramid_levels]
-        if sizes is None:
-            self.sizes = [2 ** (x + 2) for x in self.pyramid_levels]
-        if ratios is None:
-            self.ratios = np.array([0.5, 1, 2])
-        if scales is None:
-            self.scales = np.array(
-                [2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        self.size = np.array(size)
 
-    def forward(self, image):
+        self.pyramid_levels = pyramid_levels or [3, 4, 5, 6, 7]
+        self.strides = strides or [2 ** x for x in self.pyramid_levels]
+        self.sizes = sizes or [2 ** (x + 2) for x in self.pyramid_levels]
+        self.ratios = ratios or np.array([.5, 1, 2])
+        self.scales = scales or np.array([2 ** 0, 2 ** (1. / 3.), 2 ** (2. / 3.)])
 
-        image_shape = image.shape[2:]
-        image_shape = np.array(image_shape)
-        image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x)
-                        for x in self.pyramid_levels]
+    def forward(self):
+        image_shapes = ((self.size + 2 ** x - 1) // (2 ** x) for x in self.pyramid_levels)
 
         # compute anchors over all pyramid levels
-        all_anchors = np.zeros((0, 4)).astype(np.float32)
+        all_anchors = np.zeros((0, 4), dtype=np.float32)
 
-        for idx, p in enumerate(self.pyramid_levels):
-            anchors = generate_anchors(
-                base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales)
-            shifted_anchors = shift(
-                image_shapes[idx], self.strides[idx], anchors)
-            all_anchors = np.append(all_anchors, shifted_anchors, axis=0)
+        for size, stride, shape in zip(self.sizes, self.strides, image_shapes):
+            anchors = self.generate_anchors(base_size=size, ratios=self.ratios, scales=self.scales)
+            all_anchors = np.append(all_anchors, shift(shape, stride, anchors), axis=0)
 
-        all_anchors = np.expand_dims(all_anchors, axis=0)
+        return torch.from_numpy(np.expand_dims(all_anchors, axis=0).astype(np.float32))
 
-        return torch.from_numpy(all_anchors.astype(np.float32)).to(image.device)
+    @staticmethod
+    def generate_anchors(base_size: int = 16, ratios=None, scales=None):
+        """
+        Generate anchor (reference) windows by enumerating aspect ratios X
+        scales w.r.t. a reference window.
+        """
+        num_anchors = len(ratios) * len(scales)
 
+        # initialize output anchors
+        anchors = np.zeros((num_anchors, 4))
 
-def generate_anchors(base_size=16, ratios=None, scales=None):
-    """
-    Generate anchor (reference) windows by enumerating aspect ratios X
-    scales w.r.t. a reference window.
-    """
+        # scale base_size
+        anchors[:, 2:] = base_size * np.tile(scales, (2, len(ratios))).T
 
-    if ratios is None:
-        ratios = np.array([0.5, 1, 2])
+        # compute areas of anchors
+        areas = anchors[:, 2] * anchors[:, 3]
 
-    if scales is None:
-        scales = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        # correct for ratios
+        anchors[:, 2] = np.sqrt(areas / np.repeat(ratios, len(scales)))
+        anchors[:, 3] = anchors[:, 2] * np.repeat(ratios, len(scales))
 
-    num_anchors = len(ratios) * len(scales)
+        # transform from (x_ctr, y_ctr, w, h) -> (x1, y1, x2, y2)
+        anchors[:, 0::2] -= np.tile(anchors[:, 2] * .5, (2, 1)).T
+        anchors[:, 1::2] -= np.tile(anchors[:, 3] * .5, (2, 1)).T
 
-    # initialize output anchors
-    anchors = np.zeros((num_anchors, 4))
-
-    # scale base_size
-    anchors[:, 2:] = base_size * np.tile(scales, (2, len(ratios))).T
-
-    # compute areas of anchors
-    areas = anchors[:, 2] * anchors[:, 3]
-
-    # correct for ratios
-    anchors[:, 2] = np.sqrt(areas / np.repeat(ratios, len(scales)))
-    anchors[:, 3] = anchors[:, 2] * np.repeat(ratios, len(scales))
-
-    # transform from (x_ctr, y_ctr, w, h) -> (x1, y1, x2, y2)
-    anchors[:, 0::2] -= np.tile(anchors[:, 2] * 0.5, (2, 1)).T
-    anchors[:, 1::2] -= np.tile(anchors[:, 3] * 0.5, (2, 1)).T
-
-    return anchors
+        return anchors
 
 
 def compute_shape(image_shape, pyramid_levels):
@@ -229,29 +211,6 @@ def compute_shape(image_shape, pyramid_levels):
     image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x)
                     for x in pyramid_levels]
     return image_shapes
-
-
-def anchors_for_shape(
-    image_shape,
-    pyramid_levels=None,
-    ratios=None,
-    scales=None,
-    strides=None,
-    sizes=None,
-    shapes_callback=None,
-):
-
-    image_shapes = compute_shape(image_shape, pyramid_levels)
-
-    # compute anchors over all pyramid levels
-    all_anchors = np.zeros((0, 4))
-    for idx, p in enumerate(pyramid_levels):
-        anchors = generate_anchors(
-            base_size=sizes[idx], ratios=ratios, scales=scales)
-        shifted_anchors = shift(image_shapes[idx], strides[idx], anchors)
-        all_anchors = np.append(all_anchors, shifted_anchors, axis=0)
-
-    return all_anchors
 
 
 def shift(shape, stride, anchors):
@@ -565,13 +524,13 @@ def bias_init_with_prob(prior_prob):
 
 
 # Parameters for the entire model (stem, all blocks, and head)
-GlobalParams = collections.namedtuple('GlobalParams', [
+GlobalParams = namedtuple('GlobalParams', [
     'batch_norm_momentum', 'batch_norm_epsilon', 'dropout_rate',
     'num_classes', 'width_coefficient', 'depth_coefficient',
     'depth_divisor', 'min_depth', 'drop_connect_rate', 'image_size'])
 
 # Parameters for an individual model block
-BlockArgs = collections.namedtuple('BlockArgs', [
+BlockArgs = namedtuple('BlockArgs', [
     'kernel_size', 'num_repeat', 'input_filters', 'output_filters',
     'expand_ratio', 'id_skip', 'stride', 'se_ratio'])
 

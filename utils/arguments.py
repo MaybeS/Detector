@@ -37,6 +37,8 @@ class Arguments:
                                 choices=['NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                                 help="Set logging level")
 
+        cls.parser.add_argument('--network', required=False, type=str, default='SSD',
+                                help="Network")
         cls.parser.add_argument('--backbone', required=False, type=str, default='VGG16',
                                 help="Backbone of model")
         cls.parser.add_argument('-t', '--type', required=False, type=str, default='DETECTION',

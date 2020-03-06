@@ -1,9 +1,11 @@
+from typing import Tuple
 import math
 
 import torch
 import torch.nn as nn
 from torchvision.ops import nms
 
+from models import Model
 from .efficientnet import EfficientNet
 from .retinahead import RetinaHead
 from .bifpn import BIFPN
@@ -11,94 +13,130 @@ from .layers import Anchors, ClipBoxes, BBoxTransform
 from .loss import FocalLoss
 
 
-MODEL_MAP = {
-    'efficientdet-d0': 'efficientnet-b0',
-    'efficientdet-d1': 'efficientnet-b1',
-    'efficientdet-d2': 'efficientnet-b2',
-    'efficientdet-d3': 'efficientnet-b3',
-    'efficientdet-d4': 'efficientnet-b4',
-    'efficientdet-d5': 'efficientnet-b5',
-    'efficientdet-d6': 'efficientnet-b6',
-    'efficientdet-d7': 'efficientnet-b6',
-}
+class EfficientDet(Model):
+    LOSS = FocalLoss
+    BACKBONE = EfficientNet
+    NECK = BIFPN
+    HEAD = RetinaHead
+    FPN_D, FPN_W, CLASS_D, OUT = 0, 0, 0, 5
 
+    @classmethod
+    def new(cls, num_classes: int, batch_size: int,
+            config=None, **kwargs):
+        assert cls is not EfficientDet, "Create new model instance by subclass caller"
 
-class EfficientDet(nn.Module):
-    def __init__(self,
-                 num_classes,
-                 network='efficientdet-d0',
-                 D_bifpn=3,
-                 W_bifpn=88,
-                 D_class=3,
-                 is_training=True,
-                 threshold=0.01,
-                 iou_threshold=0.5):
+        backbone = EfficientDet.BACKBONE.from_pretrained(cls.BACKBONE)
+        neck = cls.NECK(in_channels=backbone.get_list_features()[-cls.OUT:],
+                        out_channels=cls.FPN_W, stack=cls.FPN_D, num_outs=cls.OUT)
+        head = cls.HEAD(num_classes=num_classes, in_channels=cls.FPN_W)
+
+        return cls(num_classes, batch_size,
+                   backbone, neck, head,
+                   config, **kwargs)
+
+    def __init__(self, num_classes: int, batch_size: int,
+                 backbone: nn.Module, neck: nn.Module, head: nn.Module,
+                 config=None, **kwargs):
         super(EfficientDet, self).__init__()
-        self.backbone = EfficientNet.from_pretrained(MODEL_MAP[network])
-        self.is_training = is_training
-        self.neck = BIFPN(in_channels=self.backbone.get_list_features()[-5:],
-                          out_channels=W_bifpn,
-                          stack=D_bifpn,
-                          num_outs=5)
-        self.bbox_head = RetinaHead(num_classes=num_classes,
-                                    in_channels=W_bifpn)
+        self.num_classes = num_classes
+        self.batch_size_ = batch_size
+        self.batch_size = batch_size
+        self.config = config
 
-        self.anchors = Anchors()
+        self.backbone = backbone
+        self.neck = neck
+        self.head = head
+
+        self.anchors = Anchors(size=config.size).forward()
         self.regressBoxes = BBoxTransform()
         self.clipBoxes = ClipBoxes()
-        self.threshold = threshold
-        self.iou_threshold = iou_threshold
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-        self.freeze_bn()
-        self.criterion = FocalLoss()
 
-    def forward(self, inputs):
-        if self.is_training:
-            inputs, annotations = inputs
-        else:
-            inputs = inputs
-        x = self.extract_feat(inputs)
-        outs = self.bbox_head(x)
-        classification = torch.cat([out for out in outs[0]], dim=1)
-        regression = torch.cat([out for out in outs[1]], dim=1)
-        anchors = self.anchors(inputs)
-        if self.is_training:
-            return self.criterion(classification, regression, anchors, annotations)
-        else:
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                n = module.kernel_size[0] * module.kernel_size[1] * module.out_channels
+                module.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(module, nn.BatchNorm2d):
+                module.weight.data.fill_(1)
+                module.bias.data.zero_()
+                module.eval()
+
+    def detect(self, x: torch.Tensor,
+               classification: torch.Tensor, regression: torch.Tensor, anchors: torch.Tensor) \
+            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.training:
+            raise RuntimeError('use detect after enable eval mode')
+
+        with torch.no_grad():
             transformed_anchors = self.regressBoxes(anchors, regression)
-            transformed_anchors = self.clipBoxes(transformed_anchors, inputs)
+            transformed_anchors = self.clipBoxes(transformed_anchors, x)
+
             scores = torch.max(classification, dim=2, keepdim=True)[0]
             scores_over_thresh = (scores > self.threshold)[0, :, 0]
 
             if scores_over_thresh.sum() == 0:
-                print('No boxes to NMS')
-                # no boxes to NMS, just return
-                return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
+                return torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)
+
             classification = classification[:, scores_over_thresh, :]
             transformed_anchors = transformed_anchors[:, scores_over_thresh, :]
             scores = scores[:, scores_over_thresh, :]
-            anchors_nms_idx = nms(
-                transformed_anchors[0, :, :], scores[0, :, 0], iou_threshold=self.iou_threshold)
-            nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(
-                dim=1)
-            return [nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]]
 
-    def freeze_bn(self):
-        '''Freeze BatchNorm layers.'''
-        for layer in self.modules():
-            if isinstance(layer, nn.BatchNorm2d):
-                layer.eval()
+            anchors_nms_idx = nms(transformed_anchors[0, :, :], scores[0, :, 0], iou_threshold=self.iou_threshold)
+            nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)
 
-    def extract_feat(self, img):
-        """
-            Directly extract features from the backbone+neck
-        """
-        x = self.backbone(img)
-        x = self.neck(x[-5:])
-        return x
+            return nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]
+
+    def forward(self, x: torch.Tensor) \
+            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        features = self.backbone(x)
+        features = self.neck(features[-self.OUT:])
+
+        def reshape(tensor: torch.Tensor) \
+                -> torch.Tensor:
+            return torch.cat(tensor, dim=1)
+
+        output = *map(reshape, self.head(features)), self.anchors.clone().to(x.device)
+
+        if not self.training:
+            output = self.detect(x, *output)
+
+        return output
+
+
+class D0(EfficientDet):
+    BACKBONE = 'efficientnet-b0'
+    FPN_D, FPN_W, CLASS_D = 2, 64, 3
+
+
+class D1(EfficientDet):
+    BACKBONE = 'efficientnet-b1'
+    FPN_D, FPN_W, CLASS_D = 3, 88, 3
+
+
+class D2(EfficientDet):
+    BACKBONE = 'efficientnet-b2'
+    FPN_D, FPN_W, CLASS_D = 4, 112, 3
+
+
+class D3(EfficientDet):
+    BACKBONE = 'efficientnet-b3'
+    FPN_D, FPN_W, CLASS_D = 5, 160, 4
+
+
+class D4(EfficientDet):
+    BACKBONE = 'efficientnet-b4'
+    FPN_D, FPN_W, CLASS_D = 6, 224, 4
+
+
+class D5(EfficientDet):
+    BACKBONE = 'efficientnet-b5'
+    FPN_D, FPN_W, CLASS_D = 7, 288, 4
+
+
+class D6(EfficientDet):
+    BACKBONE = 'efficientnet-b6'
+    FPN_D, FPN_W, CLASS_D = 8, 384, 5
+
+
+class D7(EfficientDet):
+    BACKBONE = 'efficientnet-b7'
+    FPN_D, FPN_W, CLASS_D = 8, 384, 5
