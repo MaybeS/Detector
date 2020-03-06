@@ -8,10 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
-from lib.models.mobilenet import MobileNetV1
 from models import Model
+from .mobilenet import MobileNetV1
 from .loss import Loss
-from .detector import Detector
 from .priorbox import PriorBox
 from .layers import GraphPath, Warping
 
@@ -36,10 +35,9 @@ class SSD(Model):
     LOSS = Loss
     BACKBONE = None
     APPENDIX = None
-    PRIOR = None
 
     @classmethod
-    def new(cls, num_classes: int, batch_size: int, size: Tuple[int, int] = (300, 300),
+    def new(cls, num_classes: int, batch_size: int,
             config=None, **kwargs):
         assert cls is not SSD, "Create new model instance by subclass caller"
 
@@ -49,24 +47,24 @@ class SSD(Model):
         appendix = cls.APPENDIX
         config = config
 
-        return cls(num_classes, batch_size, size,
+        return cls(num_classes, batch_size,
                    backbone, extras, loc, conf, appendix,
                    config, **kwargs)
 
-    def __init__(self, num_classes: int, batch_size: int, size: Tuple[int, int],
-                 backbone, extras, loc, conf, appendix, config,
-                 warping: bool = False, warping_mode: str = 'sum'):
+    def __init__(self, num_classes: int, batch_size: int,
+                 backbone, extras, loc, conf, appendix,
+                 config=None,
+                 warping: bool = False, warping_mode: str = 'sum',
+                 **kwargs):
         super(SSD, self).__init__()
         self.num_classes = num_classes
         self.batch_size_ = batch_size
         self.batch_size = batch_size
-        self.size = size
-        self.appendix = appendix
         self.config = config
 
-        self.priors = PriorBox(**self.config).forward()
-
         self.features = backbone
+        self.appendix = appendix
+        self.priors = PriorBox(**self.config.dump).forward()
         self.extras, self.loc, self.conf = map(nn.ModuleList, (extras, loc, conf))
 
         for _, layer, name in self.appendix:
@@ -76,25 +74,66 @@ class SSD(Model):
         self.warping = warping
         self.warping_mode = warping_mode
 
-    def detect(self, loc: torch.Tensor, conf: torch.Tensor, prior: torch.Tensor) \
+    def detect(self, locations: torch.Tensor, confidences: torch.Tensor, prior_boxes: torch.Tensor) \
             -> torch.Tensor:
         if self.training:
             raise RuntimeError('use detect after enable eval mode')
 
         with torch.no_grad():
-            result = Detector.forward(loc, F.softmax(conf, dim=-1), prior)
+            from lib.box import decode, nms
 
-        return result
+            confidences = F.softmax(confidences, dim=-1)
+            num_priors = prior_boxes.size(0)
 
-    def eval(self):
-        super(SSD, self).eval()
-        Detector.init(self.num_classes, self.batch_size)
+            output = torch.zeros(self.batch_size, self.num_classes, self.config.nms_top_k, 5) if self.config.nms else None
+            confidences = confidences.view(self.batch_size, num_priors, self.num_classes).transpose(2, 1)
 
-    def train(self, mode: bool = True):
-        super(SSD, self).train(mode)
+            # Decode predictions into bboxes.
+            for batch_index, (location, confidence) in enumerate(zip(locations, confidences)):
+                decoded_boxes = decode(location, prior_boxes, self.config.variance)
+                conf_scores = confidence.clone()
 
-        if not mode:
-            Detector.init(self.num_classes, self.batch_size)
+                if self.config.nms:
+                    for class_index in range(1, self.num_classes):
+                        # idx of highest scoring and non-overlapping boxes per class
+                        conf_mask = conf_scores[class_index].gt(self.config.conf_thresh)
+                        scores = conf_scores[class_index][conf_mask]
+
+                        if scores.size(0) == 0:
+                            continue
+
+                        loc_mask = conf_mask.unsqueeze(1).expand_as(decoded_boxes)
+                        boxes = decoded_boxes[loc_mask].view(-1, 4)
+
+                        ids, count = nms(boxes, scores, self.config.nms_thresh, self.config.nms_top_k)
+                        output[batch_index, class_index, :count] = torch.cat((
+                            scores[ids[:count]].unsqueeze(1),
+                            boxes[ids[:count]]
+                        ), dim=1)
+
+                # skip nms process for ignore torch script export error
+                else:
+                    if output is None:
+                        output = torch.cat((
+                            conf_scores.unsqueeze(-1),
+                            decoded_boxes.repeat(self.num_classes, 1).view(-1, *decoded_boxes.shape),
+                        ), dim=-1).unsqueeze(0)
+
+                    else:
+                        output = torch.cat((
+                            output,
+                            torch.cat((
+                                conf_scores.unsqueeze(-1),
+                                decoded_boxes.repeat(self.num_classes, 1).view(-1, *decoded_boxes.shape),
+                            ), dim=-1).unsqueeze(0)
+                        ))
+
+            flt = output.contiguous().view(self.batch_size, -1, 5)
+            _, idx = flt[:, :, 0].sort(1, descending=True)
+            _, rank = idx.sort(1)
+            flt[(rank < self.config.nms_top_k).unsqueeze(-1).expand_as(flt)].fill_(0)
+
+            return output
 
     def forward(self, x: torch.Tensor) \
             -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
@@ -156,10 +195,12 @@ class SSD(Model):
             sources[0] = Warping.forward(sources[0], self.warping_mode)
             sources[1] = Warping.forward(sources[1], self.warping_mode)
 
-        def refine(source: torch.Tensor):
+        def refine(source: torch.Tensor) \
+                -> torch.Tensor:
             return source.permute(0, 2, 3, 1).contiguous()
 
-        def reshape(tensor: torch.Tensor):
+        def reshape(tensor: torch.Tensor) \
+                -> torch.Tensor:
             return torch.cat(tuple(map(lambda t: t.view(t.size(0), -1), tensor)), 1)
 
         locations, confidences = map(reshape, zip(*[(refine(loc(source)), refine(conf(source)))
@@ -240,20 +281,17 @@ class SSD(Model):
         raise NotImplementedError()
 
 
-class SSD_VGG16(SSD):
+class VGG16(SSD):
     BACKBONE = models.vgg16, {'pretrained': True}
     # SCHEDULER = schedulers.MultiStepLR, {'milestones': (80, 100), 'gamma': .1}
     APPENDIX = [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 0), (128, 256, 0)]
     BOXES = [4, 6, 6, 6, 4, 4]
-    PRIOR = [
-        (38, 8, (30, 60), (2,)),
-        (19, 16, (60, 111), (2, 3)),
-        (10, 32, (111, 162), (2, 3)),
-        (5, 64, (162, 213), (2, 3)),
-        (3, 100, (213, 264), (2,)),
-        (1, 300, (264, 315), (2,)),
-    ]
+
+    aspect_ratios = ((2,), (2, 3), (2, 3), (2, 3), (2,), (2,))
+    feature_map = (38, 19, 10, 5, 3, 1)
+    steps = (8, 16, 32, 64, 100, 300)
+    sizes = ((30, 60), (60, 111), (111, 162), (162, 213), (213, 264), (264, 315))
 
     @classmethod
     def backbone(cls, *args, **kwargs):
@@ -300,19 +338,16 @@ class SSD_VGG16(SSD):
         ))))
 
 
-class SSD_MOBILENET1(SSD):
+class MOBILENET1(SSD):
     BACKBONE = MobileNetV1, {}
     # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
     APPENDIX = [(12, None, None), (14, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
-    PRIOR = [
-        (19, 16, (60, 105), (2, 3)),
-        (10, 32, (105, 150), (2, 3)),
-        (5, 64, (150, 195), (2, 3)),
-        (3, 100, (195, 240), (2, 3)),
-        (2, 150, (240, 285), (2, 3)),
-        (1, 300, (285, 330), (2, 3)),
-    ]
+
+    aspect_ratios = ((2, 3), (2, 3), (2, 3), (2, 3), (2, 3), (2, 3))
+    feature_map = (19, 10, 5, 3, 2, 1)
+    steps = (16, 32, 64, 100, 150, 300)
+    sizes = ((60, 105), (105, 150), (150, 195), (195, 240), (240, 285), (285, 330))
 
     @classmethod
     def extra(cls, in_channels: int = 1024) \
@@ -353,19 +388,16 @@ class SSD_MOBILENET1(SSD):
         return regression_headers, classification_headers
 
 
-class SSD_MOBILENET1_LITE(SSD):
+class MOBILENET1_LITE(SSD):
     BACKBONE = MobileNetV1, {}
     # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
     APPENDIX = [(12, None, None), (14, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
-    PRIOR = [
-        (19, 16, (60, 105), (2, 3)),
-        (10, 32, (105, 150), (2, 3)),
-        (5, 64, (150, 195), (2, 3)),
-        (3, 100, (195, 240), (2, 3)),
-        (2, 150, (240, 285), (2, 3)),
-        (1, 300, (285, 330), (2, 3)),
-    ]
+
+    aspect_ratios = ((2, 3), (2, 3), (2, 3), (2, 3), (2, 3), (2, 3))
+    feature_map = (19, 10, 5, 3, 2, 1)
+    steps = (16, 32, 64, 100, 150, 300)
+    sizes = ((60, 105), (105, 150), (150, 195), (195, 240), (240, 285), (285, 330))
 
     @staticmethod
     def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0):
@@ -414,20 +446,16 @@ class SSD_MOBILENET1_LITE(SSD):
         return regression_headers, classification_headers
 
 
-class SSD_MOBILENET2_LITE(SSD):
+class MOBILENET2_LITE(SSD):
     BACKBONE = models.mobilenet_v2, {'pretrained': True}
     # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
     APPENDIX = [(14, GraphPath('conv', 1), 'GraphPath'), (19, None, None)]
     EXTRAS = [(512, .2), (256, .25), (256, .5), (64, .25)]
-    PRIOR = [
-        (19, 16, (60, 105), (2, 3)),
-        (10, 32, (105, 150), (2, 3)),
-        (5, 64, (150, 195), (2, 3)),
-        (3, 100, (195, 240), (2, 3)),
-        (2, 150, (240, 285), (2, 3)),
-        (1, 300, (285, 330), (2, 3)),
-    ]
 
+    aspect_ratios = ((2, 3), (2, 3), (2, 3), (2, 3), (2, 3), (2, 3))
+    feature_map = (19, 10, 5, 3, 2, 1)
+    steps = (16, 32, 64, 100, 150, 300)
+    sizes = ((60, 105), (105, 150), (150, 195), (195, 240), (240, 285), (285, 330))
 
     @staticmethod
     def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, onnx_compatible=False):
