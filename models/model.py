@@ -24,7 +24,17 @@ class Model(nn.Module, metaclass=Beholder):
 
     @classmethod
     def loss(cls, *args, **kwargs):
-        return cls.LOSS(*args, **kwargs)
+        try:
+            return cls.LOSS(*args, **kwargs)
+        except TypeError:
+            return cls.LOSS()
+
+    def load(self, state_dict: dict = None):
+        if state_dict is not None:
+            try:
+                self.load_state_dict(state_dict)
+            except RuntimeError:
+                pass
 
     def eval(self):
         super(Model, self).eval()

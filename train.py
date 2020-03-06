@@ -29,8 +29,6 @@ def arguments(parser):
                         help="epoch start")
     parser.add_argument('--save-epoch', required=False, default=10000, type=int,
                         help="epoch for save")
-    parser.add_argument('--worker', required=False, default=4, type=int,
-                        help="worker")
 
     parser.add_argument('--warping', required=False, type=str, default='none',
                         choices=["none", "head", "all", "first"],
@@ -83,8 +81,7 @@ def train(model: nn.Module, dataset: Dataset,
             output = model(images)
             optimizer.zero_grad()
 
-            loc_loss, conf_loss = criterion(output, targets)
-            loss = loc_loss + conf_loss
+            loss = sum(criterion(output, targets))
             losses.append(loss.item())
             loss.backward()
             optimizer.step()

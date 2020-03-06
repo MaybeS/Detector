@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-from models.ssd.detector import Detector
 from utils.arguments import Arguments
 
 
@@ -19,9 +18,9 @@ def init(model: nn.Module, device: torch.device,
          args: Arguments.parse.Namespace = None) \
         -> nn.Module:
 
+    model.config.nms = False
     model.load(torch.load(args.model, map_location=lambda s, l: s))
     model.eval()
-    Detector.init(model.num_classes, args.batch, nms=False)
 
     return model
 

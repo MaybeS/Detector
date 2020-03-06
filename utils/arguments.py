@@ -31,6 +31,11 @@ class Arguments:
 
         cls.parser.add_argument('-s', '--seed', required=False, default=42,
                                 help="The answer to life the universe and everything")
+        cls.parser.add_argument('--worker', required=False, default=4, type=int,
+                                help="worker")
+        cls.parser.add_argument('--log-level', required=False, default='WARNING', type=str,
+                                choices=['NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                                help="Set logging level")
 
         cls.parser.add_argument('--backbone', required=False, type=str, default='VGG16',
                                 help="Backbone of model")
@@ -49,10 +54,6 @@ class Arguments:
                                 help="Path to model")
         cls.parser.add_argument('--thresh', required=False, default=.3, type=float,
                                 help="threshold")
-
-        cls.parser.add_argument('--log-level', required=False, default='WARNING', type=str,
-                                choices=['NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-                                help="Set logging level")
 
         args = cls.parser.parse_args()
 

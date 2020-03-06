@@ -12,13 +12,35 @@ class Config:
     """
 
     size = (300, 300)
-    aspect_ratios = ((2,), (2, 3), (2, 3), (2, 3), (2,), (2,))
-    num_priors = 6
-    variance = (.1, .2)
-    feature_map = (38, 19, 10, 5, 3, 1)
-    sizes = ((30, 60), (60, 111), (111, 162), (162, 213), (213, 264), (264, 315))
-    steps = (8, 16, 32, 64, 100, 300)
-    clip = True
+
+    ssd_attributes = ['feature_map', 'steps', 'sizes', 'aspect_ratios']
+    ssd = {
+        "aspect_ratios": ((2,), (2, 3), (2, 3), (2, 3), (2,), (2,)),
+        "num_priors": 6,
+        "variance": (.1, .2),
+        "feature_map": (38, 19, 10, 5, 3, 1),
+        'sizes': ((30, 60), (60, 111), (111, 162), (162, 213), (213, 264), (264, 315)),
+        "steps": (8, 16, 32, 64, 100, 300),
+        "clip": True,
+    }
+
+    efficientdet_attributes = ['FPN_D', 'FPN_W', 'CLASS_D', 'OUT']
+    efficientdet = {
+        "size": (512, 512),
+        "FPN_D": 0,
+        "FPN_W": 0,
+        "CLASS_D": 0,
+        "OUT": 0,
+    }
+
+    thresh = .3
+
+    conf_thresh = .01
+
+    nms = True
+    nms_thresh = .45
+    nms_top_k = 200
+    variance = .1, .2
 
     optimizer = {
         "lr": .0001,
@@ -30,11 +52,16 @@ class Config:
         "patience": 3,
     }
 
-    def __init__(self, path: str, prior: List[Tuple] = None):
-        if prior is not None:
-            for key, value in zip(('feature_map', 'steps', 'sizes', 'aspect_ratios'), zip(*prior)):
-                self.update(key, value)
+    def __init__(self, path: str, network: str = None, model: object = None):
+        # Update default configs
+        for key, value in getattr(self, network.lower(), {}).items():
+            self.update(key, value)
 
+        # Update model default configs
+        for attribute in getattr(self, f'{network.lower()}_attributes', []):
+            self.update(attribute, getattr(model, attribute))
+
+        # Load config files
         if path is not None:
             try:
                 with open(path) as f:
