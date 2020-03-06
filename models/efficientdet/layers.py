@@ -16,59 +16,45 @@ class BBoxTransform(nn.Module):
 
     def __init__(self, mean=None, std=None):
         super(BBoxTransform, self).__init__()
-        if mean is None:
-            self.mean = torch.from_numpy(
-                np.array([0, 0, 0, 0]).astype(np.float32))
-        else:
-            self.mean = mean
-        if std is None:
-            self.std = torch.from_numpy(
-                np.array([0.1, 0.1, 0.2, 0.2]).astype(np.float32))
-        else:
-            self.std = std
+        self.mean = mean or torch.from_numpy(np.array([0, 0, 0, 0]).astype(np.float32))
+        self.std = std or torch.from_numpy(np.array([0.1, 0.1, 0.2, 0.2]).astype(np.float32))
 
     def forward(self, boxes, deltas):
 
-        widths = boxes[:, :, 2] - boxes[:, :, 0]
-        heights = boxes[:, :, 3] - boxes[:, :, 1]
-        ctr_x = boxes[:, :, 0] + 0.5 * widths
-        ctr_y = boxes[:, :, 1] + 0.5 * heights
+        widths = boxes[:, 2] - boxes[:, 0]
+        heights = boxes[:, 3] - boxes[:, 1]
+        ctr_x = boxes[:, 0] + .5 * widths
+        ctr_y = boxes[:, 1] + .5 * heights
 
-        dx = deltas[:, :, 0] * self.std[0] + self.mean[0]
-        dy = deltas[:, :, 1] * self.std[1] + self.mean[1]
-        dw = deltas[:, :, 2] * self.std[2] + self.mean[2]
-        dh = deltas[:, :, 3] * self.std[3] + self.mean[3]
+        dx = deltas[:, 0] * self.std[0] + self.mean[0]
+        dy = deltas[:, 1] * self.std[1] + self.mean[1]
+        dw = deltas[:, 2] * self.std[2] + self.mean[2]
+        dh = deltas[:, 3] * self.std[3] + self.mean[3]
 
         pred_ctr_x = ctr_x + dx * widths
         pred_ctr_y = ctr_y + dy * heights
         pred_w = torch.exp(dw) * widths
         pred_h = torch.exp(dh) * heights
 
-        pred_boxes_x1 = pred_ctr_x - 0.5 * pred_w
-        pred_boxes_y1 = pred_ctr_y - 0.5 * pred_h
-        pred_boxes_x2 = pred_ctr_x + 0.5 * pred_w
-        pred_boxes_y2 = pred_ctr_y + 0.5 * pred_h
-
-        pred_boxes = torch.stack(
-            [pred_boxes_x1, pred_boxes_y1, pred_boxes_x2, pred_boxes_y2], dim=2)
-
-        return pred_boxes
+        return torch.stack([
+            pred_ctr_x - .5 * pred_w, pred_ctr_y - .5 * pred_h,
+            pred_ctr_x + .5 * pred_w, pred_ctr_y + .5 * pred_h,
+        ], dim=-1)
 
 
 class ClipBoxes(nn.Module):
 
-    def __init__(self, width=None, height=None):
+    def __init__(self, size: Tuple[int, int]):
         super(ClipBoxes, self).__init__()
+
+        self.size = size
 
     def forward(self, boxes, img):
 
-        batch_size, num_channels, height, width = img.shape
-
-        boxes[:, :, 0] = torch.clamp(boxes[:, :, 0], min=0)
-        boxes[:, :, 1] = torch.clamp(boxes[:, :, 1], min=0)
-
-        boxes[:, :, 2] = torch.clamp(boxes[:, :, 2], max=width)
-        boxes[:, :, 3] = torch.clamp(boxes[:, :, 3], max=height)
+        boxes[:, 0] = torch.clamp(boxes[:, 0], min=0)
+        boxes[:, 1] = torch.clamp(boxes[:, 1], min=0)
+        boxes[:, 2] = torch.clamp(boxes[:, 2], max=self.size[0])
+        boxes[:, 3] = torch.clamp(boxes[:, 3], max=self.size[1])
 
         return boxes
 
@@ -77,20 +63,15 @@ class RegressionModel(nn.Module):
     def __init__(self, num_features_in, num_anchors=9, feature_size=256):
         super(RegressionModel, self).__init__()
 
-        self.conv1 = nn.Conv2d(
-            num_features_in, feature_size, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
         self.act1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(feature_size, feature_size,
-                               kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act2 = nn.ReLU()
-        self.conv3 = nn.Conv2d(feature_size, feature_size,
-                               kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act3 = nn.ReLU()
-        self.conv4 = nn.Conv2d(feature_size, feature_size,
-                               kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
-        self.output = nn.Conv2d(
-            feature_size, num_anchors*4, kernel_size=3, padding=1)
+        self.output = nn.Conv2d(feature_size, num_anchors*4, kernel_size=3, padding=1)
 
     def forward(self, x):
         out = self.conv1(x)
@@ -113,20 +94,15 @@ class ClassificationModel(nn.Module):
         self.num_classes = num_classes
         self.num_anchors = num_anchors
 
-        self.conv1 = nn.Conv2d(
-            num_features_in, feature_size, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
         self.act1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(feature_size, feature_size,
-                               kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act2 = nn.ReLU()
-        self.conv3 = nn.Conv2d(feature_size, feature_size,
-                               kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act3 = nn.ReLU()
-        self.conv4 = nn.Conv2d(feature_size, feature_size,
-                               kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
-        self.output = nn.Conv2d(
-            feature_size, num_anchors*num_classes, kernel_size=3, padding=1)
+        self.output = nn.Conv2d(feature_size, num_anchors*num_classes, kernel_size=3, padding=1)
         self.output_act = nn.Sigmoid()
 
     def forward(self, x):
@@ -171,7 +147,7 @@ class Anchors(nn.Module):
             anchors = self.generate_anchors(base_size=size, ratios=self.ratios, scales=self.scales)
             all_anchors = np.append(all_anchors, shift(shape, stride, anchors), axis=0)
 
-        return torch.from_numpy(np.expand_dims(all_anchors, axis=0).astype(np.float32))
+        return torch.from_numpy(all_anchors.astype(np.float32))
 
     @staticmethod
     def generate_anchors(base_size: int = 16, ratios=None, scales=None):
