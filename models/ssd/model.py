@@ -107,16 +107,11 @@ class SSD(Model):
                         loc_mask = conf_mask.unsqueeze(1).expand_as(decoded_boxes)
                         boxes = decoded_boxes[loc_mask].view(-1, 4)
 
-                        # ids, count = nms(boxes, scores, self.config.nms_thresh, self.config.nms_top_k)
-                        # output[batch_index, class_index, :count] = torch.cat((
-                        #     scores[ids[:count]].unsqueeze(1),
-                        #     boxes[ids[:count]]
-                        # ), dim=1)
-                        ids = nms(boxes, scores, self.config.nms_thresh)
-                        (size, *_) = ids.size()
+                        nms_index = nms(boxes, scores, self.config.nms_thresh)
+                        (size, *_) = nms_index.size()
                         output[batch_index, class_index, :min(size, self.config.nms_top_k)] = torch.cat((
-                            scores[ids[:self.config.nms_top_k]].unsqueeze(1),
-                            boxes[ids[:self.config.nms_top_k]]
+                            scores[nms_index[:self.config.nms_top_k]].unsqueeze(1),
+                            boxes[nms_index[:self.config.nms_top_k]]
                         ), dim=1)
 
                 # skip nms process for ignore torch script export error

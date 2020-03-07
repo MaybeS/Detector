@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 
 import torch
 import torch.nn as nn
@@ -28,28 +28,26 @@ def calc_iou(a, b):
 
 
 class FocalLoss(nn.Module):
-    # def __init__(self):
+    def __init__(self, alpha: float = .25, gamma: float = 2.):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
 
-    def forward(self, predictions: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], targets: torch.Tensor):
+    def forward(self, predictions: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], labels: List[torch.Tensor]):
         def decode(boxes: torch.Tensor) \
                 -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
             width, height = boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1]
-
             return width, height, boxes[:, 0] + .5 * width, boxes[:, 1] + .5 * height
-
-        classifications, regressions, (anchor, ) = predictions
-
-        alpha = 0.25
-        gamma = 2.0
-        batch_size = classifications.shape[0]
+        classifications, regressions, anchor = predictions
         classification_losses, regression_losses = [], []
+        device = anchor.device
 
         anchor_widths, anchor_heights, anchor_ctr_x, anchor_ctr_y = decode(anchor)
 
-        for classification, regression, target in zip(classifications, regressions, targets):
+        for classification, regression, target in zip(classifications, regressions, labels):
             if target.size == 0:
-                regression_losses.append(torch.tensor(0).float().cuda())
-                classification_losses.append(torch.tensor(0).float().cuda())
+                regression_losses.append(torch.tensor(0, dtype=torch.float32, device=device))
+                classification_losses.append(torch.tensor(0, dtype=torch.float32, device=device))
                 continue
 
             classification = torch.clamp(classification, 1e-4, 1. - 1e-4)
@@ -58,16 +56,11 @@ class FocalLoss(nn.Module):
             IoU = calc_iou(anchor, target[:, :4])
             IoU_max, IoU_argmax = torch.max(IoU, dim=1)  # num_anchors x 1
 
-            #import pdb
-            # pdb.set_trace()
-
             # compute the loss for classification
-            targets = torch.ones(classification.shape) * -1
-            targets = targets.cuda()
+            targets = torch.ones(classification.shape, device=device) * -1
+            targets[torch.lt(IoU_max, .4), :] = 0
 
-            targets[torch.lt(IoU_max, 0.4), :] = 0
-
-            positive_indices = torch.ge(IoU_max, 0.5)
+            positive_indices = torch.ge(IoU_max, .5)
 
             num_positive_anchors = positive_indices.sum()
 
@@ -76,25 +69,18 @@ class FocalLoss(nn.Module):
             targets[positive_indices, :] = 0
             targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
 
-            alpha_factor = torch.ones(targets.shape).cuda() * alpha
+            alpha_factor = torch.ones(targets.shape, device=device) * self.alpha
 
-            alpha_factor = torch.where(
-                torch.eq(targets, 1.), alpha_factor, 1. - alpha_factor)
-            focal_weight = torch.where(
-                torch.eq(targets, 1.), 1. - classification, classification)
-            focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
+            alpha_factor = torch.where(torch.eq(targets, 1.), alpha_factor, 1. - alpha_factor)
+            focal_weight = torch.where(torch.eq(targets, 1.), 1. - classification, classification)
+            focal_weight = alpha_factor * torch.pow(focal_weight, self.gamma)
 
-            bce = -(targets * torch.log(classification) +
-                    (1.0 - targets) * torch.log(1.0 - classification))
+            bce = -(targets * torch.log(classification) + (1. - targets) * torch.log(1. - classification))
 
             # cls_loss = focal_weight * torch.pow(bce, gamma)
             cls_loss = focal_weight * bce
-
-            cls_loss = torch.where(
-                torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape).cuda())
-
-            classification_losses.append(
-                cls_loss.sum()/torch.clamp(num_positive_anchors.float(), min=1.0))
+            cls_loss = torch.where(torch.ne(targets, -1.), cls_loss, torch.zeros(cls_loss.shape, device=device))
+            classification_losses.append(cls_loss.sum() / torch.clamp(num_positive_anchors.float(), min=1.))
 
             # compute the loss for regression
 
@@ -120,22 +106,19 @@ class FocalLoss(nn.Module):
                 targets = torch.stack((targets_dx, targets_dy, targets_dw, targets_dh))
                 targets = targets.t()
 
-                targets = targets/torch.Tensor([[0.1, 0.1, 0.2, 0.2]]).cuda()
+                targets = targets / torch.Tensor([[0.1, 0.1, 0.2, 0.2]]).to(device)
 
                 negative_indices = 1 + (~positive_indices)
-
-                regression_diff = torch.abs(
-                    targets - regression[positive_indices, :])
-
+                regression_diff = torch.abs(targets - regression[positive_indices, :])
                 regression_loss = torch.where(
-                    torch.le(regression_diff, 1.0 / 9.0),
-                    0.5 * 9.0 * torch.pow(regression_diff, 2),
-                    regression_diff - 0.5 / 9.0
+                    torch.le(regression_diff, 1. / 9.),
+                    .5 * 9. * torch.pow(regression_diff, 2),
+                    regression_diff - .5 / 9.
                 )
                 regression_losses.append(regression_loss.mean())
 
             else:
-                regression_losses.append(torch.tensor(0).float().cuda())
+                regression_losses.append(torch.tensor(0, dtype=torch.float32, device=device))
 
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), \
             torch.stack(regression_losses).mean(dim=0, keepdim=True)

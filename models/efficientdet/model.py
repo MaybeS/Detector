@@ -62,31 +62,55 @@ class EfficientDet(Model):
 
     def detect(self, x: torch.Tensor,
                classifications: torch.Tensor, regressions: torch.Tensor, anchors: torch.Tensor) \
-            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            -> torch.Tensor:
         if self.training:
             raise RuntimeError('use detect after enable eval mode')
 
         with torch.no_grad():
-            output = torch.zeros(self.batch_size, self.num_classes, self.config.nms_top_k, 5).to(x.device)
+            output = torch.zeros(self.batch_size, self.num_classes, self.config.nms_top_k, 5) \
+                if self.config.nms else None
 
             for batch_index, (classification, regression) in enumerate(zip(classifications, regressions)):
                 transformed_anchors = self.regressBoxes(anchors, regression)
                 transformed_anchors = self.clipBoxes(transformed_anchors, x)
+                conf_scores, classes = classification.max(dim=-1)
 
-                scores = torch.max(classification, dim=-1, keepdim=True)[0]
-                scores_over_thresh = (scores < self.config.conf_thresh)[:, 0]
+                if self.config.nms:
+                    for class_index in range(1, self.num_classes):
+                        class_mask = classes == class_index
+                        conf_mask = conf_scores[class_mask].gt(self.config.conf_thresh)
 
-                # if scores_over_thresh.sum() == 0:
-                #     return output
+                        if conf_mask.sum() == 0:
+                            continue
 
-                classification = classification[scores_over_thresh, :]
-                transformed_anchors = transformed_anchors[scores_over_thresh, :]
-                scores = scores[scores_over_thresh, :]
+                        boxes = transformed_anchors[class_mask][conf_mask]
+                        scores = conf_scores[class_mask][conf_mask]
 
-                anchors_nms_idx = nms(transformed_anchors, scores[:, 0], iou_threshold=self.config.nms_thresh)
-                nms_scores, nms_class = classification[anchors_nms_idx, :].max(dim=1)
+                        nms_index = nms(boxes, scores, iou_threshold=self.config.nms_thresh)
+                        (size, *_) = nms_index.size()
+                        output[batch_index, class_index, :min(size, self.config.nms_top_k)] = torch.cat((
+                            scores[nms_index[:self.config.nms_top_k]].unsqueeze(1),
+                            boxes[nms_index[:self.config.nms_top_k]]
+                        ), dim=1)
 
-                return nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]
+                # skip nms process for ignore torch script export error
+                else:
+                    if output is None:
+                        output = torch.cat((
+                            conf_scores.unsqueeze(-1),
+                            transformed_anchors.repeat(self.num_classes, 1).view(-1, *transformed_anchors.shape),
+                        ), dim=-1).unsqueeze(0)
+
+                    else:
+                        output = torch.cat((
+                            output,
+                            torch.cat((
+                                conf_scores.unsqueeze(-1),
+                                transformed_anchors.repeat(self.num_classes, 1).view(-1, *transformed_anchors.shape),
+                            ), dim=-1).unsqueeze(0)
+                        ))
+
+        return output
 
     def forward(self, x: torch.Tensor) \
             -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
