@@ -67,8 +67,8 @@ class EfficientDet(Model):
             raise RuntimeError('use detect after enable eval mode')
 
         with torch.no_grad():
-            output = torch.zeros(self.batch_size, self.num_classes, self.config.nms_top_k, 5) \
-                if self.config.nms else None
+            output = torch.zeros((self.batch_size, self.num_classes, self.config.nms_top_k, 5),
+                                 device=anchors.device) if self.config.nms else None
 
             for batch_index, (classification, regression) in enumerate(zip(classifications, regressions)):
                 transformed_anchors = self.regressBoxes(anchors, regression)

@@ -56,6 +56,8 @@ class Arguments:
                                 help="Path to model")
         cls.parser.add_argument('--thresh', required=False, default=.3, type=float,
                                 help="threshold")
+        cls.parser.add_argument('--augment', required=False, default=None, type=str,
+                                help="Custom augmentation")
 
         args = cls.parser.parse_args()
 

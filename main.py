@@ -20,7 +20,8 @@ def main(args: Arguments.parse.Namespace):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Create Dataset
-    transform = Augmentation.get(args.type)(**config.dump)
+    augmentation = args.augment or args.type
+    transform = Augmentation.get(augmentation)(**config.dump)
     dataset = Dataset.get(args.type)(args.dataset,
                                      transform=transform,
                                      train=args.command == 'train',

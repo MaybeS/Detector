@@ -56,9 +56,6 @@ class Detection(Dataset):
 
     @staticmethod
     def target_trans(boxes, width, height):
-        boxes[:, 1::2] /= height
-        boxes[:, :4:2] /= width
-
         return boxes
 
     def __getitem__(self, index):

@@ -75,6 +75,15 @@ class ConvertFromInts(object):
         return image.astype(np.float32), boxes, labels
 
 
+class Normalize(object):
+    def __init__(self, mean, std):
+        self.mean = np.array(mean, dtype=np.float32)
+        self.std = np.array(std, dtype=np.float32)
+
+    def __call__(self, image, boxes=None, labels=None):
+        return (image.astype(np.float32) - self.mean) / self.std, boxes, labels
+
+
 class SubtractMeans(object):
     def __init__(self, mean):
         self.mean = np.array(mean, dtype=np.float32)
@@ -108,12 +117,18 @@ class ToPercentCoords(object):
 
 
 class Resize(object):
-    def __init__(self, size=(300, 300)):
+    def __init__(self, size=(300, 300), box: bool = False):
         self.size = tuple(size)
+        self.box = box
 
     def __call__(self, image, boxes=None, labels=None):
         if image.shape[:2] != self.size:
+            ratio = np.array(image.shape[1::-1]) / self.size
             image = cv2.resize(image, self.size)
+
+            if self.box:
+                boxes /= np.tile(ratio, 2)
+
         return image, boxes, labels
 
 
@@ -414,26 +429,6 @@ class PhotometricDistort(object):
 
 
 class Augmentation(metaclass=Beholder):
-    def __call__(self):
-        pass
-
-
-class SSD(Augmentation):
-    def __init__(self, size=300, mean=(104, 117, 123)):
-        self.mean = mean
-        self.size = size
-        self.augment = Compose([
-            ConvertFromInts(),
-            ToAbsoluteCoords(),
-            PhotometricDistort(),
-            Expand(self.mean),
-            RandomSampleCrop(),
-            RandomMirror(),
-            ToPercentCoords(),
-            Resize(self.size),
-            SubtractMeans(self.mean)
-        ])
-
     def __call__(self, img, boxes, labels):
         return self.augment(img, boxes, labels)
 
@@ -471,9 +466,6 @@ class Amano(Augmentation):
             SubtractMeans(self.mean)
         ])
 
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
-
 
 class Detection(Augmentation):
     def __init__(self, size: Tuple[int, int] = (300, 300),
@@ -484,7 +476,6 @@ class Detection(Augmentation):
         self.size = size
         self.augment = Compose([
             ConvertFromInts(),
-            ToAbsoluteCoords(),
             PhotometricDistort(),
             # Expand(self.mean),
             # RandomSampleCrop(),
@@ -494,8 +485,21 @@ class Detection(Augmentation):
             SubtractMeans(self.mean)
         ])
 
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
+
+class EfficientDet(Augmentation):
+    def __init__(self, size: Tuple[int, int] = (512, 512),
+                 mean: Tuple[float, float, float] = (.485, .456, .406),
+                 std: Tuple[float, float, float] = (.229, .224, .225),
+                 horizontal: bool = True, vertical: bool = True,
+                 **kwargs):
+        self.size = size
+        self.mean = mean
+        self.std = std
+        self.augment = Compose([
+            Normalize(self.mean, self.std),
+            RandomMirror(horizontal=horizontal, vertical=vertical),
+            Resize(self.size, box=True),
+        ])
 
 
 class COCO(Augmentation):
@@ -516,9 +520,6 @@ class COCO(Augmentation):
             lambda img, boxes=None, labels=None: (img / std, boxes, labels),
         ])
 
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
-
 
 class VOC(Augmentation):
     def __init__(self, size: Tuple[int, int] = (300, 300),
@@ -537,6 +538,3 @@ class VOC(Augmentation):
             SubtractMeans(self.mean),
             lambda img, boxes=None, labels=None: (img / std, boxes, labels),
         ])
-
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
