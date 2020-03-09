@@ -35,14 +35,3 @@ class Model(nn.Module, metaclass=Beholder):
                 self.load_state_dict(state_dict)
             except RuntimeError:
                 pass
-
-    def eval(self):
-        super(Model, self).eval()
-        self.batch_size = 1
-
-    def train(self, mode: bool = True):
-        super(Model, self).train(mode)
-        self.batch_size = self.batch_size_
-
-        if not mode:
-            self.batch_size = 1

@@ -39,7 +39,6 @@ class EfficientDet(Model):
                  config=None, **kwargs):
         super(EfficientDet, self).__init__()
         self.num_classes = num_classes
-        self.batch_size_ = batch_size
         self.batch_size = batch_size
         self.config = config
 
