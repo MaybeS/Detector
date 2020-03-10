@@ -19,9 +19,12 @@ def main(args: Arguments.parse.Namespace):
     executor = Executable.s[args.command]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    if args.command != 'train':
+        args.batch = 1
+
     # Create Dataset
     augmentation = args.augment or args.type
-    transform = Augmentation.get(augmentation)(**config.dump)
+    transform = Augmentation.get(augmentation)(**config.dump).train(args.command == 'train')
     dataset = Dataset.get(args.type)(args.dataset,
                                      transform=transform,
                                      train=args.command == 'train',
@@ -37,22 +40,17 @@ def main(args: Arguments.parse.Namespace):
 
     # Set optimizer, scheduler and criterion
     optim, optim_args = model.OPTIMIZER
-    optimizer = optim(model.parameters(), **(optim_args.update({
-        'lr': args.lr,
-        'momentum': args.momentum,
-        'weight_decay': args.decay,
-    }) or optim_args))
+    optimizer = optim(model.parameters(), **optim_args)
 
     sched, sched_args = model.SCHEDULER
-    scheduler = sched(optimizer, **(sched_args.update({
-    }) or sched_args))
+    scheduler = sched(optimizer, **sched_args)
 
     criterion = model.loss(num_classes, device=device)
 
     # Run main script
     executor(model, dataset=dataset,
              criterion=criterion, optimizer=optimizer, scheduler=scheduler,  # train args
-             transform=Augmentation.get('base')(**config.dump),  # test args
+             transform=transform,  # test args
              device=device, args=args)
 
     Executable.close()

@@ -1,8 +1,11 @@
-from typing import Tuple
+from typing import Tuple, Union
+from operator import mul
+from functools import reduce
 import math
 
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from torchvision.ops import nms
 
 from models import Model
@@ -15,6 +18,8 @@ from .loss import FocalLoss
 
 class EfficientDet(Model):
     LOSS = FocalLoss
+    OPTIMIZER = optim.AdamW, {'lr': .0001}
+    SCHEDULER = optim.lr_scheduler.ReduceLROnPlateau, {'patience': 3}
     BACKBONE = EfficientNet
     NECK = BIFPN
     HEAD = RetinaHead
@@ -52,7 +57,7 @@ class EfficientDet(Model):
 
         for module in self.modules():
             if isinstance(module, nn.Conv2d):
-                n = module.kernel_size[0] * module.kernel_size[1] * module.out_channels
+                n = reduce(mul, (*module.kernel_size, module.out_channels))
                 module.weight.data.normal_(0, math.sqrt(2. / n))
             elif isinstance(module, nn.BatchNorm2d):
                 module.weight.data.fill_(1)
@@ -75,7 +80,7 @@ class EfficientDet(Model):
                 conf_scores, classes = classification.max(dim=-1)
 
                 if self.config.nms:
-                    for class_index in range(1, self.num_classes):
+                    for class_index in range(0, self.num_classes):
                         class_mask = classes == class_index
                         conf_mask = conf_scores[class_mask].gt(self.config.conf_thresh)
 
@@ -112,7 +117,7 @@ class EfficientDet(Model):
         return output
 
     def forward(self, x: torch.Tensor) \
-            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         features = self.backbone(x)
         features = self.neck(features[-self.OUT:])
 

@@ -73,15 +73,15 @@ def train(model: nn.Module, dataset: Dataset,
                 images, targets = next(iterator)
 
                 if loss is not None and scheduler is not None:
-                    scheduler.step()
+                    scheduler.step(sum(losses) / len(losses))
 
             images = Variable(images.to(device), requires_grad=False)
             targets = [Variable(target.to(device), requires_grad=False) for target in targets]
 
-            output = model(images)
+            outputs = model(images)
             optimizer.zero_grad()
 
-            loss = sum(criterion(output, targets))
+            loss = sum(criterion(outputs, targets))
             losses.append(loss.item())
             loss.backward()
             optimizer.step()
@@ -94,7 +94,7 @@ def train(model: nn.Module, dataset: Dataset,
 
             if args.save_epoch and not (iteration % args.save_epoch):
                 torch.save(model.state_dict(),
-                           str(Path(args.dest).joinpath(f'{args.name}-{iteration:06}.pth')))
+                           str(Path(args.dest).joinpath(f'{args.network}-{iteration:06}.pth')))
 
                 yield {
                     "iteration": iteration,

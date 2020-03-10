@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
+from torch.utils import data
 
 from data import Dataset
 from models import DataParallel
@@ -44,74 +45,60 @@ def init(model: nn.Module, device: torch.device,
 def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
          device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
         -> None:
+    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
+                             shuffle=False, collate_fn=Dataset.collate, pin_memory=True)
     evaluator = Evaluator(n_class=dataset.num_classes)
     dest = Path(args.dest)
     result = {}
 
-    for index in tqdm(range(len(dataset))):
-        if not args.eval_only:
-            gt_boxes, labels = dataset.pull_anno(index)
+    with tqdm(total=len(dataset)) as tq:
+        for index, (images, targets) in enumerate(iter(loader)):
 
-        name = dataset.pull_name(index)
-        destination = Path(dest).joinpath(f'{name}.txt')
+            images = Variable(images.to(device), requires_grad=False)
+            targets = [Variable(target.to(device), requires_grad=False) for target in targets]
 
-        try:
-            if args.overwrite:
-                raise AssertionError('Force overwrite enabled')
-            detection = pd.read_csv(str(destination), header=None).values
+            outputs = model(images)
 
-        except (FileNotFoundError, AssertionError, pd.errors.EmptyDataError):
-            image = dataset.pull_image(index)
-            scale = torch.Tensor([image.shape[1], image.shape[0],
-                                  image.shape[1], image.shape[0]]).to(device)
+            for batch_index, (output, target) in enumerate(zip(outputs, targets)):
+                name = dataset.pull_name(index * args.batch + batch_index)
+                destination = Path(dest).joinpath(f'{name}.txt')
+                detection = np.empty((0, 6), dtype=np.float32)
 
-            image = Variable(torch.from_numpy(transform(image)[0]).permute(2, 0, 1).unsqueeze(0)).to(device)
+                for klass, boxes in enumerate(output):
+                    candidates = boxes[boxes[:, 0] >= args.thresh]
 
-            detection = np.empty((0, 6), dtype=np.float32)
-            detections, *_ = model(image).data
+                    if candidates.size(0) == 0:
+                        continue
 
-            for klass, boxes in enumerate(detections):
-                candidates = boxes[boxes[:, 0] >= args.thresh]
+                    detection = np.concatenate((
+                        detection,
+                        np.hstack((
+                            np.full((np.size(candidates, 0), 1), klass, dtype=np.uint8),
+                            candidates.cpu().detach().numpy(),
+                        )),
+                    ))
 
-                # filter out of image
-                candidates = candidates[(
-                    torch.sum((candidates < -1) | (candidates > 2), axis=1) == 0
-                ).nonzero().squeeze(0), :].reshape(-1, 5)
+                pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
 
-                # filter nan and inf
-                candidates = candidates[(
-                    torch.sum(torch.isinf(candidates) | torch.isnan(candidates), axis=1) == 0
-                ).nonzero().squeeze(0), :].reshape(-1, 5)
+                if not args.eval_only:
+                    if not detection.size or not target.size:
+                        continue
 
-                if candidates.size(0) == 0:
-                    continue
+                    target = target.detach().cpu().numpy()
 
-                candidates[:, 1:] *= scale
+                    evaluator.update((
+                        detection[:, 0].astype(np.int),
+                        detection[:, 1].astype(np.float32),
+                        detection[:, 2:].astype(np.float32),
+                        None,
+                    ), (
+                        target[:, -1].astype(np.int),
+                        target[:, :4].astype(np.float32),
+                        None,
+                    ))
 
-                detection = np.concatenate((
-                    detection,
-                    np.hstack((
-                        np.full((np.size(candidates, 0), 1), klass, dtype=np.uint8),
-                        candidates.cpu().detach().numpy(),
-                    )),
-                ))
-
-            pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
-
-        if not args.eval_only:
-            if not detection.size or not gt_boxes.size:
-                continue
-
-            evaluator.update((
-                detection[:, 0].astype(np.int),
-                detection[:, 1].astype(np.float32),
-                detection[:, 2:].astype(np.float32),
-                None,
-            ), (
-                np.ones(np.size(gt_boxes, 0), dtype=np.int),
-                gt_boxes.astype(np.float32),
-                None,
-            ))
+            tq.set_postfix(mAP=evaluator.mAP.mean())
+            tq.update(args.batch)
 
     if args.distribution:
         from collections import Counter
