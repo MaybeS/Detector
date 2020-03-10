@@ -129,4 +129,4 @@ class Detection(Dataset):
         except (pd.errors.EmptyDataError, IndexError):
             annotations = np.empty((0, 4), dtype=np.float32)
 
-        return annotations, np.full(np.size(annotations, 0), self.class_id - 1, dtype=np.int)
+        return annotations, np.full(np.size(annotations, 0), self.class_id, dtype=np.int)

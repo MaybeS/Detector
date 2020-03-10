@@ -63,6 +63,7 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
                 name = dataset.pull_name(index * args.batch + batch_index)
                 destination = Path(dest).joinpath(f'{name}.txt')
                 detection = np.empty((0, 6), dtype=np.float32)
+                target = target.detach().cpu().numpy()
 
                 for klass, boxes in enumerate(output):
                     candidates = boxes[boxes[:, 0] >= args.thresh]
@@ -83,8 +84,6 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
                 if not args.eval_only:
                     if not detection.size or not target.size:
                         continue
-
-                    target = target.detach().cpu().numpy()
 
                     evaluator.update((
                         detection[:, 0].astype(np.int),
