@@ -47,16 +47,17 @@ def compute_overlaps(boxes1, boxes2):
 
 
 class Evaluator:
-    def __init__(self, n_class: int, sample_patch: int = 11, threshold: float = .5):
-        self.n_class = n_class
+    def __init__(self, num_classes: int, sample_patch: int = 11, threshold: float = .5,
+                 distribution: bool = False):
+        self.num_classes = num_classes
         self.patch = np.linspace(0, 1, sample_patch)
         self.threshold = threshold
-
+        self.distribution = distribution
         self.center_total = np.empty((0, 2), dtype=np.int)
         self.center_positive = np.empty((0, 2), dtype=np.int)
 
-        self.TP, self.FP, self.FN = np.zeros((3, sample_patch, n_class), dtype=np.uint32)
-        self.gt_counts, self.pd_counts = np.zeros((2, n_class), dtype=np.uint32)
+        self.TP, self.FP, self.FN = np.zeros((3, sample_patch, num_classes), dtype=np.uint32)
+        self.gt_counts, self.pd_counts = np.zeros((2, num_classes), dtype=np.uint32)
 
     def update(self, predictions: Tuple[np.ndarray, Union[np.ndarray, None], np.ndarray, Union[np.ndarray, None]],
                groundtruths: Tuple[np.ndarray, np.ndarray, Union[np.ndarray, None]]) \
@@ -75,8 +76,10 @@ class Evaluator:
 
         if pd_bboxes.size > 0:
             iou = self.compute_iou(pd_bboxes, gt_bboxes, self.threshold)
+        else:
+            iou = np.empty((0, 0))
 
-        for klass in range(self.n_class):
+        for klass in range(self.num_classes):
             gt_number = np.sum(gt_class_ids == klass)
 
             self.gt_counts[klass] += gt_number
@@ -91,9 +94,11 @@ class Evaluator:
                     continue
 
                 # X, Y distribution store
-                centers = np.stack((pd_bboxes[:, ::2].mean(-1), pd_bboxes[:, 1::2].mean(-1))).T.astype(np.int)
-                self.center_total = np.concatenate((self.center_total, centers))
-                self.center_positive = np.concatenate((self.center_positive, centers[pd_mask]))
+                if self.distribution:
+                    boxes = pd_bboxes * 100
+                    centers = np.stack((boxes[:, ::2].mean(-1), boxes[:, 1::2].mean(-1))).T.astype(np.int)
+                    self.center_total = np.concatenate((self.center_total, centers))
+                    self.center_positive = np.concatenate((self.center_positive, centers[pd_mask]))
 
                 true_positive = np.sum(iou[pd_mask][:, gt_class_ids == klass].any(axis=0))
 
@@ -123,7 +128,7 @@ class Evaluator:
     @property
     def mAP(self) \
             -> np.ndarray:
-        prev_recall, ap = np.zeros((2, self.n_class))
+        prev_recall, ap = np.zeros((2, self.num_classes))
 
         for precision, recall in zip(self.precision[::-1], self.recall[::-1]):
             ap += precision * (recall - prev_recall)

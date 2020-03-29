@@ -475,20 +475,24 @@ class Augmentation(metaclass=Beholder):
 class Amano(Augmentation):
     def __init__(self, size: Tuple[int, int] = (300, 300),
                  mean: Tuple[float, float, float] = (111, 113, 110),
+                 horizontal: bool = True, vertical: bool = True,
                  **kwargs):
         self.mean = mean
         self.size = size
-        self.augment = Compose([
-            ConvertFromInts(),
-            ToAbsoluteCoords(),
-            # PhotometricDistort(),
-            # Expand(self.mean),
-            # RandomSampleCrop(),
-            RandomMirror(),
-            ToPercentCoords(),
-            Resize(self.size),
-            SubtractMeans(self.mean)
-        ])
+        self.augment = {
+            'train': Compose([
+                ConvertFromInts(),
+                PhotometricDistort(),
+                RandomMirror(horizontal=horizontal, vertical=vertical),
+                ToPercentCoords(),
+                Resize(self.size),
+                SubtractMeans(self.mean)
+            ]), 'test': Compose([
+                ToPercentCoords(),
+                Resize(self.size),
+                SubtractMeans(self.mean)
+            ])
+        }
 
 
 class Detection(Augmentation):
@@ -505,7 +509,7 @@ class Detection(Augmentation):
                 RandomMirror(horizontal=horizontal, vertical=vertical),
                 ToPercentCoords(),
                 Resize(self.size),
-                SubtractMeans(self.mean)
+                SubtractMeans(self.mean),
             ]), 'test': Compose([
                 ToPercentCoords(),
                 Resize(self.size),
@@ -561,11 +565,11 @@ class VOC(Augmentation):
         self.mean = mean
         self.size = size
         self.augment = Compose([
-            ConvertFromInts(),
-            PhotometricDistort(),
-            Expand(self.mean),
-            RandomSampleCrop(),
-            RandomMirror(),
+            # ConvertFromInts(),
+            # PhotometricDistort(),
+            # Expand(self.mean),
+            # RandomSampleCrop(),
+            # RandomMirror(),
             ToPercentCoords(),
             Resize(self.size),
             SubtractMeans(self.mean),

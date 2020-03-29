@@ -81,10 +81,10 @@ class Detection(Dataset):
             image = self.pull_image(idx)
             height, width, channels = image.shape
 
-            if self.eval_only is None:
+            if self.eval_only:
                 uniques = np.arange(0)
                 boxes = np.empty((uniques.size, 4))
-                labels = np.empty((uniques.size, 1))
+                labels = np.empty(uniques.size)
 
             else:
                 boxes, labels = self.pull_anno(idx)
@@ -100,7 +100,7 @@ class Detection(Dataset):
             # boxes = boxes[axis]
             # labels = labels[axis]
 
-            if boxes.size:
+            if boxes.size or self.eval_only:
                 break
 
             self.fail_id.add(idx)
@@ -126,7 +126,7 @@ class Detection(Dataset):
             if np.size(annotations, 1) > 4:
                 annotations = annotations[:, -4:]
 
-        except (pd.errors.EmptyDataError, IndexError):
+        except (pd.errors.EmptyDataError, IndexError, AttributeError):
             annotations = np.empty((0, 4), dtype=np.float32)
 
         return annotations, np.full(np.size(annotations, 0), self.class_id, dtype=np.int)

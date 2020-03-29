@@ -52,7 +52,7 @@ def generate_pseudo(model: nn.Module, dataset: Dataset, transform: Augmentation,
         -> dict:
     result = {}
 
-    evaluator = Evaluator(n_class=dataset.num_classes)
+    evaluator = Evaluator(num_classes=dataset.num_classes)
 
     ground = Path(args.unlabeled_gt)
     dest = Path(args.dest).joinpath('pseudo').joinpath(f"{kwargs['iteration']:08}")

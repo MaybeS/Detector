@@ -47,7 +47,7 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
         -> None:
     loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
                              shuffle=False, collate_fn=Dataset.collate, pin_memory=True)
-    evaluator = Evaluator(n_class=dataset.num_classes)
+    evaluator = Evaluator(num_classes=dataset.num_classes, distribution=bool(args.distribution))
     dest = Path(args.dest)
     result = {}
 
@@ -56,7 +56,6 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
 
             images = Variable(images.to(device), requires_grad=False)
             targets = [Variable(target.to(device), requires_grad=False) for target in targets]
-
             outputs = model(images)
 
             for batch_index, (output, target) in enumerate(zip(outputs, targets)):
@@ -106,25 +105,24 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
         dest = Path(args.distribution)
         dest.mkdir(exist_ok=True, parents=True)
 
-        h, w, *_ = dataset.shape
-        total_x, total_y = map(Counter, (evaluator.center_total / (w / 50, h / 50)).astype(np.int).T)
-        positive_x, positive_y = map(Counter, (evaluator.center_positive / (w / 50, h / 50)).astype(np.int).T)
+        total_x, total_y = map(Counter, evaluator.center_total.T)
+        positive_x, positive_y = map(Counter, evaluator.center_positive.T)
 
         div = lambda x, y: x / y if y else 0
         points = np.array([(
             key,
             div(positive_x.get(key, 0), total_x.get(key, 0)),
             div(positive_y.get(key, 0), total_y.get(key, 0)),
-        ) for key in range(50)])
+        ) for key in range(100)])
 
         plt.scatter(*points[:, (0, 1)].T)
         plt.ylim(0., 1.)
-        plt.xlim(0, 50)
+        plt.xlim(0, 100)
         plt.savefig(str(dest.joinpath('x.jpg')), dpi=200)
 
         plt.scatter(*points[:, (2, 0)].T)
         plt.xlim(0., 1.)
-        plt.ylim(0, 50)
+        plt.ylim(0, 100)
         plt.savefig(str(dest.joinpath('y.jpg')), dpi=200)
 
     if not args.eval_only:
