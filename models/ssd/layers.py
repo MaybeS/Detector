@@ -41,6 +41,7 @@ class Warping(Function):
     def forward(cls, x: torch.Tensor, mode: str = '', grid: torch.Tensor = None) \
             -> torch.Tensor:
         size = sum(x.shape[2:]) / 2
+
         if size == 1:
             return x
 
@@ -78,7 +79,7 @@ class Warping(Function):
         grid[:, 0] /= cls.SHAPE[0]
         grid[:, 1] /= cls.SHAPE[1]
 
-        return grid.reshape(shape)
+        return grid.reshape(shape) * 2 - 1
 
     @classmethod
     def ray2pix(cls, ray: Union[List, np.ndarray]) \
