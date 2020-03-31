@@ -56,6 +56,20 @@ class SSD(Model):
                  config=None,
                  warping: bool = False, warping_mode: str = 'sum',
                  **kwargs):
+        """
+
+        :param num_classes:
+        :param batch_size:
+        :param backbone:
+        :param extras:
+        :param loc:
+        :param conf:
+        :param appendix:
+        :param config:
+        :param warping: trigger warping layers, one of 'all' or 'head'
+        :param warping_mode: one of 'sum', 'average' or 'concat'
+        :param kwargs:
+        """
         super(SSD, self).__init__()
         self.num_classes = num_classes
         self.batch_size = batch_size
@@ -70,8 +84,8 @@ class SSD(Model):
             if isinstance(layer, nn.Module):
                 self.add_module(name, layer)
 
-        self.warping = warping
-        self.warping_mode = warping_mode
+        self.warping = config.warping
+        self.warping_mode = config.warping_mode
 
     def detect(self, locations: torch.Tensor, confidences: torch.Tensor, prior_boxes: torch.Tensor) \
             -> torch.Tensor:

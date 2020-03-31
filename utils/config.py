@@ -22,6 +22,9 @@ class Config:
         'sizes': ((30, 60), (60, 111), (111, 162), (162, 213), (213, 264), (264, 315)),
         "steps": (8, 16, 32, 64, 100, 300),
         "clip": True,
+
+        "warping": False,
+        "warping_mode": "sum",
     }
 
     efficientdet_attributes = ['FPN_D', 'FPN_W', 'CLASS_D', 'OUT']

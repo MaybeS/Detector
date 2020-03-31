@@ -54,10 +54,15 @@ class Warping(Function):
 
         output = F.grid_sample(x, grid)
 
-        if mode == 'sum':
-            output = output/100 + x
+        if mode == 'replace':
+            pass
+        elif mode == 'sum':
+            output = output + x
         elif mode == 'average':
-            output = torch.cat((torch.unsqueeze(output, 0), torch.unsqueeze(x, 0)), 0).mean(axis=0)
+            output = torch.cat((
+                torch.unsqueeze(output, 0),
+                torch.unsqueeze(x, 0)
+            ), 0).mean(axis=0)
         elif mode == 'concat':
             output = torch.cat((output, x), -1)
         else:
