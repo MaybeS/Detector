@@ -10,7 +10,10 @@ from data import Dataset
 
 
 class Amano(Dataset):
+    class_id = 1
     num_classes = 2
+    class_names = ('BACKGROUND',
+                   'Object')
 
     IMAGE_DIR = 'images'
     IMAGE_EXT = '.jpg'
@@ -38,7 +41,7 @@ class Amano(Dataset):
         self.target_transform = target_transform or self.target_trans
         self.eval_only = eval_only
         self.max_step = max_step
-        self.front_only = True
+        self.front_only = False
         self.fail_id = set()
 
         if eval_only:
@@ -50,15 +53,15 @@ class Amano(Dataset):
             assert len(self.images) == len(self.detections), \
                 "Image and Detections mismatch"
 
+        self.shape = self.pull_image(0).shape
+
     @staticmethod
     def target_trans(boxes, width, height):
-        boxes[:, 1::2] /= height
-        boxes[:, :4:2] /= width
-
         return boxes
 
     def __getitem__(self, index):
         item = self.pull_item(index)
+
         return item
 
     def __len__(self):
@@ -79,7 +82,7 @@ class Amano(Dataset):
             image = self.pull_image(idx)
             height, width, channels = image.shape
 
-            if self.eval_only is None:
+            if self.eval_only:
                 uniques = np.arange(0)
                 boxes = np.empty((uniques.size, 4))
                 labels = np.empty((uniques.size, 1))
@@ -151,7 +154,7 @@ class Amano(Dataset):
                 np.expand_dims(np.array([l, t, r, b]), 0)
             ))
 
-        return annotations, np.zeros(np.size(annotations, 0), dtype=np.uint8)
+        return annotations, np.ones(np.size(annotations, 0), dtype=np.uint8)
 
     @classmethod
     def ray2pix(cls, ray):
