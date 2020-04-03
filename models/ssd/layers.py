@@ -38,21 +38,20 @@ class Warping(Function):
     }
 
     @classmethod
-    def forward(cls, x: torch.Tensor, mode: str = '', grid: torch.Tensor = None) \
+    def forward(cls, inputs: torch.Tensor, mode: str = '', grid: torch.Tensor = None) \
             -> torch.Tensor:
-        size = sum(x.shape[2:]) / 2
+        size = sum(inputs.shape[2:]) / 2
 
         if size == 1:
-            return x
+            return inputs
 
         if grid is None:
-            grid = torch.from_numpy(
-                np.expand_dims(cls.grid(step=(20/size)), 0)).to(x.device)
+            grid = torch.from_numpy(np.expand_dims(cls.grid(step=(20/size)), 0)).to(inputs.device)
 
         shape = grid.shape
-        grid = grid.view(1, -1).repeat(1, x.shape[0]).view(-1, *shape[1:])
+        grid = grid.view(1, -1).repeat(1, inputs.shape[0]).view(-1, *shape[1:])
 
-        output = F.grid_sample(x, grid)
+        output = F.grid_sample(inputs, grid)
 
         if mode == 'replace':
             pass
@@ -65,20 +64,19 @@ class Warping(Function):
             w, h = (size * scale).astype(np.int)
 
             resized = F.interpolate(output, size=(w, h))
-            output[:, :, x:x + w, y:y + h] += resized
-            output[:, :, x:x + w, y:y + h] /= 2
+
+            output = inputs.clone()
+            output[:, :, x:x + w, y:y + h] = (inputs[:, :, x:x + w, y:y + h] + resized) / 2
 
         elif mode == 'sum':
-            output = output + x
+            output += inputs
 
         elif mode == 'average':
-            output = torch.cat((
-                torch.unsqueeze(output, 0),
-                torch.unsqueeze(x, 0)
-            ), 0).mean(axis=0)
+            output += inputs
+            output /= 2
 
         elif mode == 'concat':
-            output = torch.cat((output, x), -1)
+            output = torch.cat((output, inputs), -1)
 
         else:
             raise NotImplementedError(f'Warping {mode} is not implemented!')
@@ -88,7 +86,7 @@ class Warping(Function):
     @classmethod
     def grid(cls, wide: int = 10, step: float = 1.) \
             -> np.ndarray:
-        arange = np.arange(-wide, wide + step, step)
+        arange = np.arange(-wide, wide, step)
         grid = np.array(np.meshgrid(arange, arange), dtype=np.float32).transpose(1, 2, 0)
         shape = grid.shape
         grid = np.apply_along_axis(lambda x: cls.ray2pix([*x, 3]), 1, grid.reshape(-1, 2))
