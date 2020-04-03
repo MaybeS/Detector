@@ -47,7 +47,7 @@ class Warping(Function):
 
         if grid is None:
             grid = torch.from_numpy(
-                np.expand_dims(cls.grid(wide=10, step=(20/size)), 0)).to(x.device)
+                np.expand_dims(cls.grid(step=(20/size)), 0)).to(x.device)
 
         shape = grid.shape
         grid = grid.view(1, -1).repeat(1, x.shape[0]).view(-1, *shape[1:])
@@ -56,24 +56,39 @@ class Warping(Function):
 
         if mode == 'replace':
             pass
+
+        elif mode == 'fit':
+            size = np.array(shape[1:-1])
+            scale = 2 ** -.5
+
+            x, y = (1 - scale) / 2 * size
+            w, h = size * scale
+
+            resized = F.interpolate(output, size=(int(w), int(h)))
+            output[:, :, x:x + w, y:y + h] += resized
+            output[:, :, x:x + w, y:y + h] /= 2
+
         elif mode == 'sum':
             output = output + x
+
         elif mode == 'average':
             output = torch.cat((
                 torch.unsqueeze(output, 0),
                 torch.unsqueeze(x, 0)
             ), 0).mean(axis=0)
+
         elif mode == 'concat':
             output = torch.cat((output, x), -1)
+
         else:
             raise NotImplementedError(f'Warping {mode} is not implemented!')
 
         return output
 
     @classmethod
-    def grid(cls, wide: int = 15, step: float = 1.) \
+    def grid(cls, wide: int = 10, step: float = 1.) \
             -> np.ndarray:
-        arange = np.arange(-wide, wide, step)
+        arange = np.arange(-wide, wide + step, step)
         grid = np.array(np.meshgrid(arange, arange), dtype=np.float32).transpose(1, 2, 0)
         shape = grid.shape
         grid = np.apply_along_axis(lambda x: cls.ray2pix([*x, 3]), 1, grid.reshape(-1, 2))
@@ -103,4 +118,3 @@ class Warping(Function):
                          [0, cls.CALIBRATION['f'][1], cls.CALIBRATION['c'][1]],
                          [0, 0, 1]], dtype=np.float32)
         return (im @ np.asarray([[*q, 1]], dtype=np.float32).T).T.squeeze()[:2]
-
