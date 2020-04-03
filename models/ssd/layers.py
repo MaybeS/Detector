@@ -61,10 +61,10 @@ class Warping(Function):
             size = np.array(shape[1:-1])
             scale = 2 ** -.5
 
-            x, y = (1 - scale) / 2 * size
-            w, h = size * scale
+            x, y = ((1 - scale) / 2 * size).astype(np.int)
+            w, h = (size * scale).astype(np.int)
 
-            resized = F.interpolate(output, size=(int(w), int(h)))
+            resized = F.interpolate(output, size=(w, h))
             output[:, :, x:x + w, y:y + h] += resized
             output[:, :, x:x + w, y:y + h] /= 2
 

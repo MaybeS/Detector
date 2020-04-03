@@ -34,7 +34,7 @@ def arguments(parser):
                         choices=["none", "head", "all", "first"],
                         help="Warping layer apply")
     parser.add_argument('--warping-mode', required=False, type=str, default='sum',
-                        choices=['replace', 'sum', 'average', 'concat'])
+                        choices=['replace', 'fit', 'sum', 'average', 'concat'])
 
 
 def init(model: nn.Module, device: torch.device,
