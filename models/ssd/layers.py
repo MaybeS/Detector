@@ -28,6 +28,48 @@ class GraphPath(nn.Module):
         return x, y
 
 
+class PositionConv2d(nn.Module):
+    def __init__(self, n_channels: int, out_channels: int, kernel_size: int,
+                 dilation: int = 1, padding: int = 0, stride: int = 1):
+        super(PositionConv2d, self).__init__()
+
+        self.n_channels = n_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.dilation = dilation
+        self.padding = padding
+        self.stride = stride
+
+        self.weight = nn.Parameter(torch.Tensor(
+            self.out_channels, self.n_channels, kernel_size * kernel_size))
+        self.bias = nn.Parameter(torch.Tensor(
+            self.out_channels))
+
+    def forward(self, inputs: torch.Tensor):
+        dtype, device = inputs.dtype, inputs.device
+        b, c, w, h = inputs.shape
+
+        width, height = (
+            np.array((w, h)) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1
+        ) // self.stride + 1
+
+        windows = F.unfold(inputs,
+                           kernel_size=(self.kernel_size, self.kernel_size), padding=(self.padding, self.padding),
+                           dilation=(self.dilation, self.dilation), stride=(self.stride, self.stride)) \
+            .transpose(1, 2).contiguous().view(-1, c, self.kernel_size * self.kernel_size).transpose(0, 1)
+
+        result = torch.zeros((b * self.out_channels, width, height), dtype=dtype, device=device)
+
+        for out_index in range(self.out_channels):
+            for window, weight in zip(windows, self.weight[out_index]):
+                temp = torch.matmul(window, weight).view(-1, width, height)
+                result[out_index*temp.shape[0]:(out_index+1)*temp.shape[0]] += temp
+
+            result[out_index*b:(out_index+1)*b] += self.bias[out_index]
+
+        return result.view(b, self.out_channels, width, height)
+
+
 class Warping(Function):
     PADDING = 480, 0
     SHAPE = 2880, 2880
