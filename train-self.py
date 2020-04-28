@@ -20,14 +20,14 @@ from utils.arguments import Arguments
 
 def arguments(add_argument):
     add_argument('--unlabeled', required=False, type=str, default='',
-                        help="unlabeled data")
+                 help="unlabeled data")
     add_argument('--unlabeled-gt', required=False, type=str, default='',
-                        help="unlabeled data")
+                 help="unlabeled data")
 
     add_argument('--pseudo-step', required=False, type=int, default=10,
-                        help="pseudo label using step")
+                 help="pseudo label using step")
     add_argument('--pseudo-first-step', required=False, type=int, default=0,
-                        help="pseudo label using step first time only")
+                 help="pseudo label using step first time only")
 
 
 def init(model: nn.Module, device: torch.device,

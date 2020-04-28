@@ -19,12 +19,12 @@ from utils.arguments import Arguments
 
 def arguments(add_argument):
     add_argument('--eval-only', required=False, default=False, action='store_true',
-                        help="evaluate only, not detecting")
+                 help="evaluate only, not detecting")
     add_argument('--overwrite', required=False, default=False, action='store_true',
-                        help="overwrite previous result")
+                 help="overwrite previous result")
 
     add_argument('--distribution', required=False, default='', type=str,
-                        help="Save figure distribution")
+                 help="Save figure distribution")
 
 
 def init(model: nn.Module, device: torch.device,
