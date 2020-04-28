@@ -14,28 +14,27 @@ from models import DataParallel
 from utils.arguments import Arguments
 
 
-def arguments(add_argument):
-    add_argument('--batch', required=False, default=32, type=int,
-                 help="batch")
-    add_argument('--lr', required=False, default=.0001, type=float,
-                 help="learning rate")
-    add_argument('--momentum', required=False, default=.9, type=float,
-                 help="momentum")
-    add_argument('--decay', required=False, default=5e-4, type=float,
-                 help="weight decay")
-    add_argument('--epoch', required=False, default=100000, type=int,
-                 help="epoch")
-    add_argument('--start-epoch', required=False, default=0, type=int,
-                 help="epoch start")
-    add_argument('--save-epoch', required=False, default=10000, type=int,
-                 help="epoch for save")
+def arguments(args):
+    args.add_argument('--batch', required=False, default=32, type=int,
+                      help="batch")
+    args.add_argument('--lr', required=False, default=.0001, type=float,
+                      help="learning rate")
+    args.add_argument('--momentum', required=False, default=.9, type=float,
+                      help="momentum")
+    args.add_argument('--decay', required=False, default=5e-4, type=float,
+                      help="weight decay")
+    args.add_argument('--epoch', required=False, default=100000, type=int,
+                      help="epoch")
+    args.add_argument('--start-epoch', required=False, default=0, type=int,
+                      help="epoch start")
+    args.add_argument('--save-epoch', required=False, default=10000, type=int,
+                      help="epoch for save")
 
-    add_argument('--warping', required=False, type=str, default='none',
-                 choices=["none", "head", "all", "first"],
+    args.add_argument('--warping', required=False, type=str, default='none',
+                      choices=["none", "head", "all", "first"],
                         help="Warping layer apply")
-    add_argument('--warping-mode', required=False, type=str, default='sum',
-                 choices=['replace', 'fit', 'sum', 'average', 'concat'])
-
+    args.add_argument('--warping-mode', required=False, type=str, default='sum',
+                      choices=['replace', 'fit', 'sum', 'average', 'concat'])
 
 def init(model: nn.Module, device: torch.device,
          args: Arguments.parse.Namespace = None) \

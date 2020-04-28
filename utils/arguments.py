@@ -1,3 +1,4 @@
+from typing import Tuple
 from sys import stdout
 import argparse
 import logging
@@ -9,25 +10,19 @@ from .executable import Executable
 class Arguments:
     parse = argparse
     parser = argparse.ArgumentParser(
-        description='Single Shot MultiBox Detector')
-
-    @classmethod
-    def add_argument(cls, *args, **kwargs):
-        try:
-            cls.parser.add_argument(*args, **kwargs)
-        except argparse.ArgumentError:
-            pass
+        description='Detector')
 
     def __new__(cls):
         # auto executable command
-        executables = tuple(Executable.s)
-        if len(executables) and Executable.ismain():
+        executables: Tuple[str] = tuple(Executable.s)
+        if executables and Executable.ismain():
             cls.parser.add_argument("command", metavar="<command>",
                                     choices=executables,
                                     help=f'Choice from {", ".join(executables)}')
 
-        for executor in executables:
-            Executable.s[executor].arguments(cls.add_argument)
+        for key, executor in Executable.s.items():
+            executor.args = argparse.ArgumentParser(description=f'Argument sub-parser in Detector [{key}]')
+            executor.arguments(executor.args)
 
         cls.parser.add_argument('--name', required=False, default='SSD300', type=str,
                                 help="Name of model")
@@ -62,7 +57,12 @@ class Arguments:
         cls.parser.add_argument('--augment', required=False, default=None, type=str,
                                 help="Custom augmentation")
 
-        args = cls.parser.parse_args()
+        args, unknown = cls.parser.parse_known_args()
+        executable_args = Executable.s[args.command].args.parse_args(unknown)
+
+        # sync executable extra arguments to args
+        for key, value in vars(executable_args).items():
+            setattr(args, key, value)
 
         Path(args.dest).mkdir(exist_ok=True, parents=True)
 

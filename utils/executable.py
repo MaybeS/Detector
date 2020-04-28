@@ -1,20 +1,22 @@
 import __main__
 import logging
+from typing import Dict
 from pathlib import Path
 from pprint import pformat
 
 
 class Executable:
     _ = Path(__main__.__file__)
-    s = dict()
+    s: Dict[str, 'Executable'] = dict()
     logger = logging.getLogger('Detector')
 
     def __init__(self, file: str):
         self.command = file
         self.module = __import__(file)
         self.name = self.module.__name__.replace('-', '_')
+        self.args = None
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str):
         if hasattr(self.module, key):
             return getattr(self.module, key)
         elif hasattr(super(Executable, self), key):
