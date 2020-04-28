@@ -1,4 +1,5 @@
 import json
+from typing import Iterator
 from pathlib import Path
 
 from tqdm import tqdm
@@ -13,7 +14,6 @@ from torch.utils import data
 from data import Dataset
 from models import DataParallel
 from lib.evaluate import Evaluator
-from lib.augmentation import Augmentation
 from utils.arguments import Arguments
 
 
@@ -42,9 +42,9 @@ def init(model: nn.Module, device: torch.device,
     return model
 
 
-def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
+def test(model: nn.Module, dataset: Dataset,
          device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
-        -> None:
+        -> Iterator[dict]:
     loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
                              shuffle=False, collate_fn=Dataset.collate, pin_memory=True)
     evaluator = Evaluator(num_classes=dataset.num_classes, distribution=bool(args.distribution))

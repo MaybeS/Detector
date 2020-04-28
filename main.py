@@ -10,9 +10,9 @@ from utils.config import Config
 
 
 def main(args: Arguments.parse.Namespace):
-    MODEL = Model.get(args.network).get(args.backbone)
+    model_class = Model.get(args.network).get(args.backbone)
 
-    config = Config(args.config, args.network, MODEL)
+    config = Config(args.config, args.network, model_class)
     config.sync(vars(args))
     Executable.log('Config', config.dump)
 
@@ -26,13 +26,13 @@ def main(args: Arguments.parse.Namespace):
     augmentation = args.augment or args.type
     transform = Augmentation.get(augmentation)(**config.dump).train(args.command == 'train')
     dataset = Dataset.get(args.type)(args.dataset,
-                                     transform=transform,
                                      train=args.command == 'train',
+                                     transform=transform,
                                      eval_only=args.eval_only)
 
     # Create Model
     num_classes = args.classes or dataset.num_classes
-    model = MODEL.new(num_classes, args.batch, config=config)
+    model = model_class.new(num_classes, args.batch, config=config)
     Executable.log('Model', model)
 
     # Initialize Model
@@ -49,8 +49,11 @@ def main(args: Arguments.parse.Namespace):
 
     # Run main script
     executor(model, dataset=dataset,
-             criterion=criterion, optimizer=optimizer, scheduler=scheduler,  # train args
-             transform=transform,  # test args
+             # train arguments
+             criterion=criterion, optimizer=optimizer, scheduler=scheduler,
+             # test arguments
+             transform=transform,
+             # etc arguments
              device=device, args=args)
 
     Executable.close()

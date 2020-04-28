@@ -57,13 +57,14 @@ class Arguments:
         cls.parser.add_argument('--augment', required=False, default=None, type=str,
                                 help="Custom augmentation")
 
+        # sync executable extra arguments to args
         args, unknown = cls.parser.parse_known_args()
         executable_args = Executable.s[args.command].args.parse_args(unknown)
 
-        # sync executable extra arguments to args
         for key, value in vars(executable_args).items():
             setattr(args, key, value)
 
+        # Create destination directory
         Path(args.dest).mkdir(exist_ok=True, parents=True)
 
         # Init logger

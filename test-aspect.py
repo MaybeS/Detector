@@ -1,4 +1,5 @@
 import json
+from typing import Iterator
 from pathlib import Path
 
 from tqdm import tqdm
@@ -13,7 +14,6 @@ from torch.utils import data
 from data import Dataset
 from models import DataParallel
 from lib.evaluate import Evaluator
-from lib.augmentation import Augmentation
 from utils.arguments import Arguments
 
 
@@ -22,6 +22,8 @@ def arguments(args):
                       help="evaluate only, not detecting")
     args.add_argument('--overwrite', required=False, default=False, action='store_true',
                       help="overwrite previous result")
+    args.add_argument('--crop', required=False, type=float, default=1/3,
+                      help="Crop ratio")
 
     args.add_argument('--distribution', required=False, default='', type=str,
                       help="Save figure distribution")
@@ -42,59 +44,84 @@ def init(model: nn.Module, device: torch.device,
     return model
 
 
-def test_aspect(model: nn.Module, dataset: Dataset, transform: Augmentation,
-         device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
-        -> None:
-    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
-                             shuffle=False, collate_fn=Dataset.collate, pin_memory=True)
+def test_aspect(model: nn.Module, dataset: Dataset,
+                device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
+        -> Iterator[dict]:
     evaluator = Evaluator(num_classes=dataset.num_classes, distribution=bool(args.distribution))
     dest = Path(args.dest)
     result = {}
 
     with tqdm(total=len(dataset)) as tq:
-        for index, (images, targets) in enumerate(iter(loader)):
+        for index in range(len(dataset)):
+            name = dataset.pull_name(index)
+            image = dataset.pull_image(index)
+            boxes, labels = dataset.pull_anno(index)
 
-            print(images.shape)
-            images = Variable(images.to(device), requires_grad=False)
-            targets = [Variable(target.to(device), requires_grad=False) for target in targets]
-            outputs = model(images)
+            h, w, *_ = image.shape
 
-            for batch_index, (output, target) in enumerate(zip(outputs, targets)):
-                name = dataset.pull_name(index * args.batch + batch_index)
-                destination = Path(dest).joinpath(f'{name}.txt')
-                detection = np.empty((0, 6), dtype=np.float32)
-                target = target.detach().cpu().numpy()
+            target = np.hstack((boxes / np.array((w, h, w, h)), np.expand_dims(labels, axis=1)))
 
-                for klass, boxes in enumerate(output):
-                    candidates = boxes[boxes[:, 0] >= args.thresh]
+            up, down = image[:int(h*args.crop)], np.flip(image[-int(h*args.crop):], axis=0)
+            (up, *_), (down, *_) = map(dataset.transform, (up, down))
 
-                    if candidates.size(0) == 0:
-                        continue
+            outputs_up, *_ = model(
+                Variable(torch.from_numpy(up).permute(2, 0, 1).unsqueeze(0)).to(device))
+            outputs_down, *_ = model(
+                Variable(torch.from_numpy(down).permute(2, 0, 1).unsqueeze(0)).to(device))
 
-                    detection = np.concatenate((
-                        detection,
-                        np.hstack((
-                            np.full((np.size(candidates, 0), 1), klass, dtype=np.uint8),
-                            candidates.cpu().detach().numpy(),
-                        )),
-                    ))
+            destination = Path(dest).joinpath(f'{name}.txt')
+            detection = np.empty((0, 6), dtype=np.float32)
 
-                pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
+            for klass, boxes in enumerate(outputs_up):
+                candidates = boxes[boxes[:, 0] >= args.thresh]
 
-                if not args.eval_only:
-                    if not detection.size or not target.size:
-                        continue
+                if candidates.size(0) == 0:
+                    continue
 
-                    evaluator.update((
-                        detection[:, 0].astype(np.int),
-                        detection[:, 1].astype(np.float32),
-                        detection[:, 2:].astype(np.float32),
-                        None,
-                    ), (
-                        target[:, -1].astype(np.int),
-                        target[:, :4].astype(np.float32),
-                        None,
-                    ))
+                # calibrate
+                candidates[:, [2, 4]] *= args.crop
+
+                detection = np.concatenate((
+                    detection,
+                    np.hstack((
+                        np.full((np.size(candidates, 0), 1), klass, dtype=np.uint8),
+                        candidates.cpu().detach().numpy(),
+                    )),
+                ))
+
+            for klass, boxes in enumerate(outputs_down):
+                candidates = boxes[boxes[:, 0] >= args.thresh]
+
+                if candidates.size(0) == 0:
+                    continue
+
+                # flip candidates coordinates
+                candidates[:, [2, 4]] = 1 - candidates[:, [4, 2]] * args.crop
+
+                detection = np.concatenate((
+                    detection,
+                    np.hstack((
+                        np.full((np.size(candidates, 0), 1), klass, dtype=np.uint8),
+                        candidates.cpu().detach().numpy(),
+                    )),
+                ))
+
+            pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
+
+            if not args.eval_only:
+                if not detection.size or not target.size:
+                    continue
+
+                evaluator.update((
+                    detection[:, 0].astype(np.int),
+                    detection[:, 1].astype(np.float32),
+                    detection[:, 2:].astype(np.float32),
+                    None,
+                ), (
+                    target[:, -1].astype(np.int),
+                    target[:, :4].astype(np.float32),
+                    None,
+                ))
 
             tq.set_postfix(mAP=evaluator.mAP.mean())
             tq.update(args.batch)

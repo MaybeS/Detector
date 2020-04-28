@@ -108,10 +108,12 @@ class ToAbsoluteCoords(object):
 class ToPercentCoords(object):
     def __call__(self, image, boxes=None, labels=None):
         height, width, channels = image.shape
-        boxes[:, 0] /= width
-        boxes[:, 2] /= width
-        boxes[:, 1] /= height
-        boxes[:, 3] /= height
+
+        if boxes is not None:
+            boxes[:, 0] /= width
+            boxes[:, 2] /= width
+            boxes[:, 1] /= height
+            boxes[:, 3] /= height
 
         return image, boxes, labels
 
