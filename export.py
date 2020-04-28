@@ -4,14 +4,13 @@ import torch.nn as nn
 from utils.arguments import Arguments
 
 
-def arguments(parser):
-    parser.add_argument('--format', required=False, type=str, default='torch',
-                        choices=[
-                            "torch",
-                            # "onnx",
-                            # "tf",
-                        ],
-                        help="Export format")
+def arguments(add_argument):
+    add_argument('--format', required=False, type=str, default='torch',
+                 choices=[
+                     "torch",
+                     # "onnx",
+                     # "tf",
+                 ], help="Export format")
 
 
 def init(model: nn.Module, device: torch.device,

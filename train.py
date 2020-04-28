@@ -14,26 +14,26 @@ from models import DataParallel
 from utils.arguments import Arguments
 
 
-def arguments(parser):
-    parser.add_argument('--batch', required=False, default=32, type=int,
+def arguments(add_argument):
+    add_argument('--batch', required=False, default=32, type=int,
                         help="batch")
-    parser.add_argument('--lr', required=False, default=.0001, type=float,
+    add_argument('--lr', required=False, default=.0001, type=float,
                         help="learning rate")
-    parser.add_argument('--momentum', required=False, default=.9, type=float,
+    add_argument('--momentum', required=False, default=.9, type=float,
                         help="momentum")
-    parser.add_argument('--decay', required=False, default=5e-4, type=float,
+    add_argument('--decay', required=False, default=5e-4, type=float,
                         help="weight decay")
-    parser.add_argument('--epoch', required=False, default=100000, type=int,
+    add_argument('--epoch', required=False, default=100000, type=int,
                         help="epoch")
-    parser.add_argument('--start-epoch', required=False, default=0, type=int,
+    add_argument('--start-epoch', required=False, default=0, type=int,
                         help="epoch start")
-    parser.add_argument('--save-epoch', required=False, default=10000, type=int,
+    add_argument('--save-epoch', required=False, default=10000, type=int,
                         help="epoch for save")
 
-    parser.add_argument('--warping', required=False, type=str, default='none',
+    add_argument('--warping', required=False, type=str, default='none',
                         choices=["none", "head", "all", "first"],
                         help="Warping layer apply")
-    parser.add_argument('--warping-mode', required=False, type=str, default='sum',
+    add_argument('--warping-mode', required=False, type=str, default='sum',
                         choices=['replace', 'fit', 'sum', 'average', 'concat'])
 
 

@@ -18,15 +18,15 @@ from lib.augmentation import Augmentation
 from utils.arguments import Arguments
 
 
-def arguments(parser):
-    parser.add_argument('--unlabeled', required=False, type=str, default='',
+def arguments(add_argument):
+    add_argument('--unlabeled', required=False, type=str, default='',
                         help="unlabeled data")
-    parser.add_argument('--unlabeled-gt', required=False, type=str, default='',
+    add_argument('--unlabeled-gt', required=False, type=str, default='',
                         help="unlabeled data")
 
-    parser.add_argument('--pseudo-step', required=False, type=int, default=10,
+    add_argument('--pseudo-step', required=False, type=int, default=10,
                         help="pseudo label using step")
-    parser.add_argument('--pseudo-first-step', required=False, type=int, default=0,
+    add_argument('--pseudo-first-step', required=False, type=int, default=0,
                         help="pseudo label using step first time only")
 
 

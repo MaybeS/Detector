@@ -13,7 +13,10 @@ class Arguments:
 
     @classmethod
     def add_argument(cls, *args, **kwargs):
-        cls.parser.add_argument(*args, **kwargs)
+        try:
+            cls.parser.add_argument(*args, **kwargs)
+        except argparse.ArgumentError:
+            pass
 
     def __new__(cls):
         # auto executable command
@@ -24,7 +27,7 @@ class Arguments:
                                     help=f'Choice from {", ".join(executables)}')
 
         for executor in executables:
-            Executable.s[executor].arguments(cls.parser)
+            Executable.s[executor].arguments(cls.add_argument)
 
         cls.parser.add_argument('--name', required=False, default='SSD300', type=str,
                                 help="Name of model")
