@@ -72,14 +72,14 @@ def train(model: nn.Module, dataset: Dataset,
                 iterator = iter(loader)
                 images, targets = next(iterator)
 
-                if loss is not None and scheduler is not None:
+                if losses and scheduler:
                     scheduler.step(sum(losses) / len(losses))
 
             images = Variable(images.to(device), requires_grad=False)
             targets = [Variable(target.to(device), requires_grad=False) for target in targets]
 
-            outputs = model(images)
             optimizer.zero_grad()
+            outputs = model(images)
 
             loss = sum(criterion(outputs, targets))
             losses.append(loss.item())

@@ -71,6 +71,20 @@ class PositionConv2d(nn.Module):
 
 
 class Warping(Function):
+    """Feature warping layer
+
+    Support warping mode follows:
+    - replace:  Return feature map after warping
+    - fit:      Average of warped feature map and input feature map of fitting window
+                (inside square of circular feature map)
+    - sum:      Sum of warped feature map and input feature map
+    - average:  Average of warped feature map and input feature map
+
+    Apply warping layers
+    - head: Apply head of features
+    - all:  Apply all feature maps
+
+    """
     PADDING = 480, 0
     SHAPE = 2880, 2880
     CALIBRATION = {
