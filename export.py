@@ -1,25 +1,27 @@
 import torch
 import torch.nn as nn
 
+from models.ssd.detector import Detector
 from utils.arguments import Arguments
 
 
-def arguments(args):
-    args.add_argument('--format', required=False, type=str, default='torch',
-                      choices=[
-                          "torch",
-                          # "onnx",
-                          # "tf",
-                      ], help="Export format")
+def arguments(parser):
+    parser.add_argument('--format', required=False, type=str, default='torch',
+                        choices=[
+                            "torch",
+                            # "onnx",
+                            # "tf",
+                        ],
+                        help="Export format")
 
 
 def init(model: nn.Module, device: torch.device,
          args: Arguments.parse.Namespace = None) \
         -> nn.Module:
 
-    model.config.nms = False
     model.load(torch.load(args.model, map_location=lambda s, l: s))
     model.eval()
+    Detector.init(model.num_classes, args.batch, nms=False)
 
     return model
 

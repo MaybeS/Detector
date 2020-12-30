@@ -7,6 +7,20 @@ import torch.nn.functional as F
 from torch.autograd import Function
 
 
+def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, onnx_compatible=False):
+    """Replace Conv2d with a depthwise Conv2d and Pointwise Conv2d.
+    """
+    ReLU = nn.ReLU if onnx_compatible else nn.ReLU6
+
+    return nn.Sequential(
+        nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=kernel_size,
+                  groups=in_channels, stride=stride, padding=padding),
+        nn.BatchNorm2d(in_channels),
+        ReLU(),
+        nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1),
+    )
+
+
 class GraphPath(nn.Module):
 
     def __init__(self, name, index):
@@ -28,63 +42,7 @@ class GraphPath(nn.Module):
         return x, y
 
 
-class PositionConv2d(nn.Module):
-    def __init__(self, n_channels: int, out_channels: int, kernel_size: int,
-                 dilation: int = 1, padding: int = 0, stride: int = 1):
-        super(PositionConv2d, self).__init__()
-
-        self.n_channels = n_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.dilation = dilation
-        self.padding = padding
-        self.stride = stride
-
-        self.weight = nn.Parameter(torch.Tensor(
-            self.out_channels, self.n_channels, kernel_size * kernel_size))
-        self.bias = nn.Parameter(torch.Tensor(
-            self.out_channels))
-
-    def forward(self, inputs: torch.Tensor):
-        dtype, device = inputs.dtype, inputs.device
-        b, c, w, h = inputs.shape
-
-        width, height = (
-            np.array((w, h)) + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1
-        ) // self.stride + 1
-
-        windows = F.unfold(inputs,
-                           kernel_size=(self.kernel_size, self.kernel_size), padding=(self.padding, self.padding),
-                           dilation=(self.dilation, self.dilation), stride=(self.stride, self.stride)) \
-            .transpose(1, 2).contiguous().view(-1, c, self.kernel_size * self.kernel_size).transpose(0, 1)
-
-        result = torch.zeros((b * self.out_channels, width, height), dtype=dtype, device=device)
-
-        for out_index in range(self.out_channels):
-            for window, weight in zip(windows, self.weight[out_index]):
-                temp = torch.matmul(window, weight).view(-1, width, height)
-                result[out_index*temp.shape[0]:(out_index+1)*temp.shape[0]] += temp
-
-            result[out_index*b:(out_index+1)*b] += self.bias[out_index]
-
-        return result.view(b, self.out_channels, width, height)
-
-
 class Warping(Function):
-    """Feature warping layer
-
-    Support warping mode follows:
-    - replace:  Return feature map after warping
-    - fit:      Average of warped feature map and input feature map of fitting window
-                (inside square of circular feature map)
-    - sum:      Sum of warped feature map and input feature map
-    - average:  Average of warped feature map and input feature map
-
-    Apply warping layers
-    - head: Apply head of features
-    - all:  Apply all feature maps
-
-    """
     PADDING = 480, 0
     SHAPE = 2880, 2880
     CALIBRATION = {
@@ -94,53 +52,34 @@ class Warping(Function):
     }
 
     @classmethod
-    def forward(cls, inputs: torch.Tensor, mode: str = '', grid: torch.Tensor = None) \
+    def forward(cls, x: torch.Tensor, mode: str = '', grid: torch.Tensor = None) \
             -> torch.Tensor:
-        size = sum(inputs.shape[2:]) / 2
-
+        size = sum(x.shape[2:]) / 2
         if size == 1:
-            return inputs
+            return x
 
         if grid is None:
-            grid = torch.from_numpy(np.expand_dims(cls.grid(step=(20/size)), 0)).to(inputs.device)
+            grid = torch.from_numpy(
+                np.expand_dims(cls.grid(wide=10, step=(20/size)), 0)).to(x.device)
 
         shape = grid.shape
-        grid = grid.view(1, -1).repeat(1, inputs.shape[0]).view(-1, *shape[1:])
+        grid = grid.view(1, -1).repeat(1, x.shape[0]).view(-1, *shape[1:])
 
-        output = F.grid_sample(inputs, grid)
+        output = F.grid_sample(x, grid)
 
-        if mode == 'replace':
-            pass
-
-        elif mode == 'fit':
-            size = np.array(shape[1:-1])
-            scale = 2 ** -.5
-
-            x, y = ((1 - scale) / 2 * size).astype(np.int)
-            w, h = (size * scale).astype(np.int)
-
-            resized = F.interpolate(output, size=(w, h))
-
-            output = inputs.clone()
-            output[:, :, x:x + w, y:y + h] = (inputs[:, :, x:x + w, y:y + h] + resized) / 2
-
-        elif mode == 'sum':
-            output += inputs
-
+        if mode == 'sum':
+            output = output/100 + x
         elif mode == 'average':
-            output += inputs
-            output /= 2
-
+            output = torch.cat((torch.unsqueeze(output, 0), torch.unsqueeze(x, 0)), 0).mean(axis=0)
         elif mode == 'concat':
-            output = torch.cat((output, inputs), -1)
-
+            output = torch.cat((output, x), -1)
         else:
             raise NotImplementedError(f'Warping {mode} is not implemented!')
 
         return output
 
     @classmethod
-    def grid(cls, wide: int = 10, step: float = 1.) \
+    def grid(cls, wide: int = 15, step: float = 1.) \
             -> np.ndarray:
         arange = np.arange(-wide, wide, step)
         grid = np.array(np.meshgrid(arange, arange), dtype=np.float32).transpose(1, 2, 0)
@@ -153,7 +92,7 @@ class Warping(Function):
         grid[:, 0] /= cls.SHAPE[0]
         grid[:, 1] /= cls.SHAPE[1]
 
-        return grid.reshape(shape) * 2 - 1
+        return grid.reshape(shape)
 
     @classmethod
     def ray2pix(cls, ray: Union[List, np.ndarray]) \
@@ -172,3 +111,41 @@ class Warping(Function):
                          [0, cls.CALIBRATION['f'][1], cls.CALIBRATION['c'][1]],
                          [0, 0, 1]], dtype=np.float32)
         return (im @ np.asarray([[*q, 1]], dtype=np.float32).T).T.squeeze()[:2]
+
+
+class DilatedWeightedConvolution(nn.Module):
+    def __init__(self, in_feature, out_feature, *args, **kwargs):
+        super(DilatedWeightedConvolution, self).__init__()
+        self.step_size = 32
+        self.out_size = int(out_feature / 4)
+        # TODO assert out_feature is multiples of 4
+
+        self.warping = Warping()
+        self.dilated_1 = nn.Conv2d(in_feature, self.out_size * 2, (1, 1))
+
+        self.dilated_3_1 = nn.Conv2d(in_feature, self.step_size, (1, 1))
+        self.dilated_3_2 = nn.Conv2d(self.step_size, self.out_size, (3, 3),
+                                     dilation=2, padding=2)
+
+        self.dilated_5_1 = nn.Conv2d(in_feature, self.step_size, (1, 1))
+        self.dilated_5_2 = nn.Conv2d(self.step_size, self.out_size, (5, 5),
+                                     dilation=3, padding=6)
+
+    def forward(self, x: torch.Tensor):
+        warped = torch.mean(torch.stack((
+            x,
+            self.warping.forward(x),
+        )), dim=0)
+
+
+        d1 = self.dilated_1(warped)
+
+        d3 = self.dilated_3_1(warped)
+        d3 = self.dilated_3_2(d3)
+
+        d5 = self.dilated_5_1(warped)
+        d5 = self.dilated_5_2(d5)
+
+        x += torch.cat((d1, d3, d5), axis=1)
+
+        return x

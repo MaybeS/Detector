@@ -2,14 +2,12 @@ from typing import Tuple
 
 import numpy as np
 import torch
-from torch.utils import data
 
 from utils.beholder import Beholder
 
 
-class Dataset(data.Dataset, metaclass=Beholder):
+class Dataset(metaclass=Beholder):
     num_classes = 1
-    class_names = ('BG', )
 
     @staticmethod
     def collate(batch):
@@ -25,7 +23,7 @@ class Dataset(data.Dataset, metaclass=Beholder):
                 2) (list of tensors) annotations for a given image are stacked on
                                      0 dim
         """
-        images, targets, *_ = zip(*batch)
+        images, targets = zip(*map(lambda p: p[:2], batch))
 
         return torch.stack(images, 0), list(map(torch.FloatTensor, targets))
 

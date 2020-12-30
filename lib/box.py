@@ -105,11 +105,11 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
     # ensure every gt matches with its prior of max overlap
     for j in range(best_prior_idx.size(0)):
         best_truth_idx[best_prior_idx[j]] = j
-    matches = truths[best_truth_idx]          # Shape: [num_priors, 4]
-    conf = labels[best_truth_idx]             # Shape: [num_priors]
+    matches = truths[best_truth_idx]          # Shape: [num_priors,4]
+    conf = labels[best_truth_idx] + 1         # Shape: [num_priors]
     conf[best_truth_overlap < threshold] = 0  # label as background
     loc = encode(matches, priors, variances)
-    loc_t[idx] = loc    # [num_priors, 4] encoded offsets to learn
+    loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
     conf_t[idx] = conf  # [num_priors] top class label for each prior
 
 

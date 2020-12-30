@@ -10,7 +10,7 @@ import torch.utils.data as data
 from data import Dataset
 
 
-class VOC(Dataset):
+class VOC(data.Dataset, Dataset):
     num_classes = 21
     class_names = ('BACKGROUND',
                    'aeroplane', 'bicycle', 'bird', 'boat',
@@ -28,6 +28,21 @@ class VOC(Dataset):
     DETECTION_EXT = '.xml'
 
     SHAPE = 300, 300
+
+    cfg = {
+        'num_classes': 21,
+        'lr_steps': (80000, 100000, 120000),
+        'max_iter': 120000,
+        'feature_maps': [38, 19, 10, 5, 3, 1],
+        'min_dim': 300,
+        'steps': [8, 16, 32, 64, 100, 300],
+        'min_sizes': [30, 60, 111, 162, 213, 264],
+        'max_sizes': [60, 111, 162, 213, 264, 315],
+        'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+        'variance': [0.1, 0.2],
+        'clip': True,
+        'name': 'VOC',
+    }
 
     def __init__(self, root,
                  transform=None,

@@ -3,17 +3,17 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
-import skimage
+import skimage.io
 import torch
+import torch.utils.data as data
 
 from data import Dataset
 
 
-class Detection(Dataset):
-    class_id = 1
+class Detection(data.Dataset, Dataset):
     num_classes = 2
     class_names = ('BACKGROUND',
-                   'Object')
+                   'Car')
 
     IMAGE_DIR = 'images'
     IMAGE_EXT = '.jpg'
@@ -22,26 +22,34 @@ class Detection(Dataset):
 
     SHAPE = 300, 300
 
+    cfg = {
+        'num_classes': 2,
+        'lr_steps': (80000, 100000, 120000),
+        'max_iter': 120000,
+        'feature_maps': [38, 19, 10, 5, 3, 1],
+        'min_dim': 300,
+        'steps': [8, 16, 32, 64, 100, 300],
+        'min_sizes': [30, 60, 111, 162, 213, 264],
+        'max_sizes': [60, 111, 162, 213, 264, 315],
+        'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+        'variance': [0.1, 0.2],
+        'clip': True,
+        'name': 'Detection',
+    }
+
     def __init__(self, root,
                  transform=None,
                  target_transform=None,
                  train: bool = True,
                  eval_only: bool = False):
         self.name = 'Detection'
+        self.root = Path(root)
 
-        path, *options = root.split(':')
-
-        self.root = Path(path)
         self.transform = transform
         self.target_transform = target_transform or self.target_trans
         self.eval_only = eval_only
         self.front_only = True
         self.fail_id = set()
-
-        # Update options
-        for option in options:
-            key, value = map(str.strip, option.split('='))
-            setattr(self, key, int(value))
 
         if eval_only:
             self.images = list(sorted(self.root.glob(f'*{self.IMAGE_EXT}')))
@@ -56,11 +64,13 @@ class Detection(Dataset):
 
     @staticmethod
     def target_trans(boxes, width, height):
+        boxes[:, 1::2] /= height
+        boxes[:, :4:2] /= width
+
         return boxes
 
     def __getitem__(self, index):
         item = self.pull_item(index)
-
         return item
 
     def __len__(self):
@@ -81,10 +91,10 @@ class Detection(Dataset):
             image = self.pull_image(idx)
             height, width, channels = image.shape
 
-            if self.eval_only:
+            if self.eval_only is None:
                 uniques = np.arange(0)
                 boxes = np.empty((uniques.size, 4))
-                labels = np.empty(uniques.size)
+                labels = np.empty((uniques.size, 1))
 
             else:
                 boxes, labels = self.pull_anno(idx)
@@ -100,7 +110,7 @@ class Detection(Dataset):
             # boxes = boxes[axis]
             # labels = labels[axis]
 
-            if boxes.size or self.eval_only:
+            if boxes.size:
                 break
 
             self.fail_id.add(idx)
@@ -123,10 +133,7 @@ class Detection(Dataset):
             annotations = pd.read_csv(str(self.detections[index]), header=None).values.astype(np.float32)
             annotations = annotations[annotations[:, 2] - annotations[:, 0] > 50]
 
-            if np.size(annotations, 1) > 4:
-                annotations = annotations[:, -4:]
-
-        except (pd.errors.EmptyDataError, IndexError, AttributeError):
+        except pd.errors.EmptyDataError:
             annotations = np.empty((0, 4), dtype=np.float32)
 
-        return annotations, np.full(np.size(annotations, 0), self.class_id, dtype=np.int)
+        return annotations, np.zeros(np.size(annotations, 0), dtype=np.uint8)
