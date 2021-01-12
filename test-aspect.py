@@ -18,6 +18,10 @@ from utils.arguments import Arguments
 
 
 def arguments(args):
+    args.add_argument('--eval-only', required=False, default=False, action='store_true',
+                      help="evaluate only, not detecting")
+    args.add_argument('--overwrite', required=False, default=False, action='store_true',
+                      help="overwrite previous result")
     args.add_argument('--crop', required=False, type=float, default=1/3,
                       help="Crop ratio")
 

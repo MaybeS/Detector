@@ -9,13 +9,13 @@ import torch.nn.functional as F
 from torchvision import models
 
 from models import Model
+from .mobilenet import MobileNetV1
 from .loss import Loss
-from .detector import Detector
 from .priorbox import PriorBox
-from .layers import GraphPath, Warping, SeperableConv2d
+from .layers import GraphPath, Warping
 
 
-class SSD(nn.Module, Model):
+class SSD(Model):
     """Single Shot Multibox Architecture
     The network is composed of a base VGG network followed by the
     added multibox conv layers.  Each multibox layer branches into
@@ -33,61 +33,123 @@ class SSD(nn.Module, Model):
             e.g. [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     """
     LOSS = Loss
+    BACKBONE = None
+    APPENDIX = None
 
     @classmethod
-    def new(cls, num_classes: int, batch_size: int, size: Tuple[int, int] = (300, 300),
-            base=None, config=None, **kwargs):
-        base = cls.get(f'SSD_{base}', SSD_VGG16)
+    def new(cls, num_classes: int, batch_size: int,
+            config=None, **kwargs):
+        assert cls is not SSD, "Create new model instance by subclass caller"
 
-        backbone = base.backbone(pretrained=True)
-        extras = list(base.extra())
-        loc, conf = base.head(backbone, extras, num_classes)
-        appendix = base.APPENDIX
-        prior = base.PRIOR
-        config = config or {}
+        backbone = cls.backbone()
+        extras = list(cls.extra())
+        loc, conf = cls.head(backbone, extras, num_classes)
+        appendix = cls.APPENDIX
+        config = config
 
-        return cls(num_classes, batch_size, size,
-                   backbone, extras, loc, conf, appendix, prior,
+        return cls(num_classes, batch_size,
+                   backbone, extras, loc, conf, appendix,
                    config, **kwargs)
 
-    def __init__(self, num_classes: int, batch_size: int, size: Tuple[int, int],
-                 backbone, extras, loc, conf, appendix, prior,
-                 config=None, warping: bool = False, warping_mode: str = 'sum'):
+    def __init__(self, num_classes: int, batch_size: int,
+                 backbone, extras, loc, conf, appendix,
+                 config=None,
+                 warping: bool = False, warping_mode: str = 'sum',
+                 **kwargs):
+        """
+
+        :param num_classes:
+        :param batch_size:
+        :param backbone:
+        :param extras:
+        :param loc:
+        :param conf:
+        :param appendix:
+        :param config:
+        :param warping: trigger warping layers, one of 'all' or 'head'
+        :param warping_mode: one of 'sum', 'average' or 'concat'
+        :param kwargs:
+        """
         super(SSD, self).__init__()
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.size = size
-        self.appendix = appendix
-        self.config = config or {}
-
-        self.priors = PriorBox(**self.config, config=prior).forward()
+        self.config = config
 
         self.features = backbone
+        self.appendix = appendix
+        self.priors = PriorBox(**self.config.dump).forward()
         self.extras, self.loc, self.conf = map(nn.ModuleList, (extras, loc, conf))
 
         for _, layer, name in self.appendix:
             if isinstance(layer, nn.Module):
                 self.add_module(name, layer)
 
-        self.warping = warping
-        self.warping_mode = warping_mode
+        self.warping = config.warping
+        self.warping_mode = config.warping_mode
 
-    def detect(self, loc: torch.Tensor, conf: torch.Tensor, prior: torch.Tensor) \
+    def detect(self, locations: torch.Tensor, confidences: torch.Tensor, prior_boxes: torch.Tensor) \
             -> torch.Tensor:
         if self.training:
             raise RuntimeError('use detect after enable eval mode')
 
         with torch.no_grad():
-            result = Detector.forward(loc, F.softmax(conf, dim=-1), prior)
+            from lib.box import decode
+            from torchvision.ops import nms
 
-        return result
+            confidences = F.softmax(confidences, dim=-1)
+            num_priors = prior_boxes.size(0)
 
-    def eval(self):
-        super(SSD, self).eval()
-        Detector.init(self.num_classes, self.batch_size)
+            output = torch.zeros(self.batch_size, self.num_classes, self.config.nms_top_k, 5) \
+                if self.config.nms else None
+            confidences = confidences.view(self.batch_size, num_priors, self.num_classes).transpose(2, 1)
 
-    def train(self, mode: bool = True):
-        super(SSD, self).train(mode)
+            # Decode predictions into bounding boxes.
+            for batch_index, (location, confidence) in enumerate(zip(locations, confidences)):
+                decoded_boxes = decode(location, prior_boxes, self.config.variance)
+                conf_scores = confidence.clone()
+
+                if self.config.nms:
+                    for class_index in range(1, self.num_classes):
+                        # idx of highest scoring and non-overlapping boxes per class
+                        conf_mask = conf_scores[class_index].gt(self.config.conf_thresh)
+                        scores = conf_scores[class_index][conf_mask]
+
+                        if scores.size(0) == 0:
+                            continue
+
+                        loc_mask = conf_mask.unsqueeze(1).expand_as(decoded_boxes)
+                        boxes = decoded_boxes[loc_mask].view(-1, 4)
+
+                        nms_index = nms(boxes, scores, self.config.nms_thresh)
+                        (size, *_) = nms_index.size()
+                        output[batch_index, class_index, :min(size, self.config.nms_top_k)] = torch.cat((
+                            scores[nms_index[:self.config.nms_top_k]].unsqueeze(1),
+                            boxes[nms_index[:self.config.nms_top_k]]
+                        ), dim=1)
+
+                # skip nms process for ignore torch script export error
+                else:
+                    if output is None:
+                        output = torch.cat((
+                            conf_scores.unsqueeze(-1),
+                            decoded_boxes.repeat(self.num_classes, 1).view(-1, *decoded_boxes.shape),
+                        ), dim=-1).unsqueeze(0)
+
+                    else:
+                        output = torch.cat((
+                            output,
+                            torch.cat((
+                                conf_scores.unsqueeze(-1),
+                                decoded_boxes.repeat(self.num_classes, 1).view(-1, *decoded_boxes.shape),
+                            ), dim=-1).unsqueeze(0)
+                        ))
+
+            flt = output.contiguous().view(self.batch_size, -1, 5)
+            _, idx = flt[:, :, 0].sort(1, descending=True)
+            _, rank = idx.sort(1)
+            flt[(rank < self.config.nms_top_k).unsqueeze(-1).expand_as(flt)].fill_(0)
+
+            return output
 
     def forward(self, x: torch.Tensor) \
             -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
@@ -149,10 +211,12 @@ class SSD(nn.Module, Model):
             sources[0] = Warping.forward(sources[0], self.warping_mode)
             sources[1] = Warping.forward(sources[1], self.warping_mode)
 
-        def refine(source: torch.Tensor):
+        def refine(source: torch.Tensor) \
+                -> torch.Tensor:
             return source.permute(0, 2, 3, 1).contiguous()
 
-        def reshape(tensor: torch.Tensor):
+        def reshape(tensor: torch.Tensor) \
+                -> torch.Tensor:
             return torch.cat(tuple(map(lambda t: t.view(t.size(0), -1), tensor)), 1)
 
         locations, confidences = map(reshape, zip(*[(refine(loc(source)), refine(conf(source)))
@@ -203,10 +267,6 @@ class SSD(nn.Module, Model):
                     'extras.1.0': ['extras.2'], 'extras.1.2': ['extras.3'],
                     'extras.2.0': ['extras.4'], 'extras.2.2': ['extras.5'],
                     'extras.3.0': ['extras.6'], 'extras.3.2': ['extras.7'],
-
-                    # https://github.com/qfgaohao/pytorch-ssd mobilenet weights
-                    '.conv.0.0.': ['.conv.0.'], '.conv.0.1.': ['.conv.1.'],
-                    '.conv.1.': ['.conv.3.'], '.conv.2.': ['.conv.4.'],
                 }
                 pattern = re.compile('|'.join(chain(*replace_map.values())))
 
@@ -221,34 +281,38 @@ class SSD(nn.Module, Model):
             self.conf.apply(self.initializer)
 
     @classmethod
+    def backbone(cls, *args, **kwargs):
+        method, arguments = cls.BACKBONE
+
+        return method(*args, **(kwargs.update(arguments) or kwargs)).features
+
+    @classmethod
     def extra(cls, in_channels: int = 1024) \
             -> Iterable[nn.Module]:
-        pass
+        raise NotImplementedError()
 
     @classmethod
     def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
             -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
-        pass
+        raise NotImplementedError()
 
 
-class SSD_VGG16(SSD):
-    BACKBONE = models.vgg16
+class VGG16(SSD):
+    BACKBONE = models.vgg16, {'pretrained': True}
+    # SCHEDULER = schedulers.MultiStepLR, {'milestones': (80, 100), 'gamma': .1}
     APPENDIX = [(23, nn.BatchNorm2d(512), 'L2Norm'), (35, None, None)]
     EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 0), (128, 256, 0)]
     BOXES = [4, 6, 6, 6, 4, 4]
 
-    PRIOR = [
-        (38, 8, (30, 60), (2,)),
-        (19, 16, (60, 111), (2, 3)),
-        (10, 32, (111, 162), (2, 3)),
-        (5, 64, (162, 213), (2, 3)),
-        (3, 100, (213, 264), (2,)),
-        (1, 300, (264, 315), (2,)),
-    ]
+    aspect_ratios = ((2,), (2, 3), (2, 3), (2, 3), (2,), (2,))
+    feature_map = (38, 19, 10, 5, 3, 1)
+    steps = (8, 16, 32, 64, 100, 300)
+    sizes = ((30, 60), (60, 111), (111, 162), (162, 213), (213, 264), (264, 315))
 
     @classmethod
-    def backbone(cls, pretrained):
-        backbone = cls.BACKBONE(pretrained=pretrained).features[:-1]
+    def backbone(cls, *args, **kwargs):
+        method, arguments = cls.BACKBONE
+        backbone = method(*args, **(kwargs.update(arguments) or kwargs)).features[:-1]
         backbone[16].ceil_mode = True
 
         for i, layer in enumerate([
@@ -290,25 +354,136 @@ class SSD_VGG16(SSD):
         ))))
 
 
-class SSD_MOBILENET2_LITE(SSD):
-    BACKBONE = models.mobilenet_v2
+class MOBILENET1(SSD):
+    BACKBONE = MobileNetV1, {}
+    # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    APPENDIX = [(12, None, None), (14, None, None)]
+    EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
+
+    aspect_ratios = ((2, 3), (2, 3), (2, 3), (2, 3), (2, 3), (2, 3))
+    feature_map = (19, 10, 5, 3, 2, 1)
+    steps = (16, 32, 64, 100, 150, 300)
+    sizes = ((60, 105), (105, 150), (150, 195), (195, 240), (240, 285), (285, 330))
+
+    @classmethod
+    def extra(cls, in_channels: int = 1024) \
+            -> Iterable[nn.Module]:
+
+        for mid_channels, out_channels, option in cls.EXTRAS:
+            yield nn.Sequential(
+                nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=mid_channels, out_channels=out_channels, kernel_size=3,
+                          stride=1 + option, padding=option),
+                nn.ReLU(),
+            )
+            in_channels = out_channels
+
+    @classmethod
+    def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
+            -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
+
+        regression_headers = [
+            nn.Conv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1024, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+        ]
+
+        classification_headers = [
+            nn.Conv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1024, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+        ]
+
+        return regression_headers, classification_headers
+
+
+class MOBILENET1_LITE(SSD):
+    BACKBONE = MobileNetV1, {}
+    # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
+    APPENDIX = [(12, None, None), (14, None, None)]
+    EXTRAS = [(256, 512, 1), (128, 256, 1), (128, 256, 1), (128, 256, 1)]
+
+    aspect_ratios = ((2, 3), (2, 3), (2, 3), (2, 3), (2, 3), (2, 3))
+    feature_map = (19, 10, 5, 3, 2, 1)
+    steps = (16, 32, 64, 100, 150, 300)
+    sizes = ((60, 105), (105, 150), (150, 195), (195, 240), (240, 285), (285, 330))
+
+    @staticmethod
+    def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0):
+        return nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=kernel_size,
+                      groups=in_channels, stride=stride, padding=padding),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1),
+        )
+
+    @classmethod
+    def extra(cls, in_channels: int = 1024) \
+            -> Iterable[nn.Module]:
+
+        for mid_channels, out_channels, option in cls.EXTRAS:
+            yield nn.Sequential(
+                nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=1),
+                nn.ReLU(),
+                cls.SeperableConv2d(in_channels=mid_channels, out_channels=out_channels, kernel_size=3,
+                                    stride=1 + option, padding=option),
+            )
+            in_channels = out_channels
+
+    @classmethod
+    def head(cls, backbone: nn.Module, extras: List[nn.Module], num_classes: int) \
+            -> Tuple[Iterable[nn.Module], Iterable[nn.Module]]:
+
+        regression_headers = [
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=1024, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=1),
+        ]
+
+        classification_headers = [
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=1024, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=6 * num_classes, kernel_size=1),
+        ]
+
+        return regression_headers, classification_headers
+
+
+class MOBILENET2_LITE(SSD):
+    BACKBONE = models.mobilenet_v2, {'pretrained': True}
+    # SCHEDULER = schedulers.CosineAnnealingLR, {'T_max': 120}
     APPENDIX = [(14, GraphPath('conv', 1), 'GraphPath'), (19, None, None)]
     EXTRAS = [(512, .2), (256, .25), (256, .5), (64, .25)]
 
-    PRIOR = [
-        (19, 16, (60, 105), (2, 3)),
-        (10, 32, (105, 150), (2, 3)),
-        (5, 64, (150, 195), (2, 3)),
-        (3, 100, (195, 240), (2, 3)),
-        (2, 150, (240, 285), (2, 3)),
-        (1, 300, (285, 330), (2, 3)),
-    ]
+    aspect_ratios = ((2, 3), (2, 3), (2, 3), (2, 3), (2, 3), (2, 3))
+    feature_map = (19, 10, 5, 3, 2, 1)
+    steps = (16, 32, 64, 100, 150, 300)
+    sizes = ((60, 105), (105, 150), (150, 195), (195, 240), (240, 285), (285, 330))
 
-    @classmethod
-    def backbone(cls, pretrained):
-        backbone = cls.BACKBONE(pretrained=pretrained).features
+    @staticmethod
+    def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, onnx_compatible=False):
+        ReLU = nn.ReLU if onnx_compatible else nn.ReLU6
 
-        return backbone
+        return nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=kernel_size,
+                      groups=in_channels, stride=stride, padding=padding),
+            nn.BatchNorm2d(in_channels),
+            ReLU(),
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1),
+        )
 
     @classmethod
     def extra(cls, in_channels: int = 1280) \
@@ -324,20 +499,20 @@ class SSD_MOBILENET2_LITE(SSD):
         in_channels = round(576 * width_mult)
 
         regression_headers = [
-            SeperableConv2d(in_channels, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(1280, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(512, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
-            SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(in_channels, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(1280, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(512, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
+            cls.SeperableConv2d(256, out_channels=6 * 4, kernel_size=3, padding=1, onnx_compatible=False),
             nn.Conv2d(in_channels=64, out_channels=6 * 4, kernel_size=1),
         ]
 
         classification_headers = [
-            SeperableConv2d(in_channels, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(1280, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(512, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
-            SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(in_channels, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(1280, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(512, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
+            cls.SeperableConv2d(256, out_channels=6 * num_classes, kernel_size=3, padding=1),
             nn.Conv2d(in_channels=64, out_channels=6 * num_classes, kernel_size=1),
         ]
 

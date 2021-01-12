@@ -1,4 +1,5 @@
 import json
+from typing import Iterator
 from pathlib import Path
 
 from tqdm import tqdm
@@ -8,19 +9,22 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
+from torch.utils import data
 
 from data import Dataset
 from models import DataParallel
 from lib.evaluate import Evaluator
-from lib.augmentation import Augmentation, Base
 from utils.arguments import Arguments
 
 
-def arguments(parser):
-    parser.add_argument('--eval-only', required=False, default=False, action='store_true',
-                        help="evaluate only, not detecting")
-    parser.add_argument('--overwrite', required=False, default=False, action='store_true',
-                        help="overwrite previous result")
+def arguments(args):
+    args.add_argument('--eval-only', required=False, default=False, action='store_true',
+                      help="evaluate only, not detecting")
+    args.add_argument('--overwrite', required=False, default=False, action='store_true',
+                      help="overwrite previous result")
+
+    args.add_argument('--distribution', required=False, default='', type=str,
+                      help="Save figure distribution")
 
 
 def init(model: nn.Module, device: torch.device,
@@ -38,66 +42,88 @@ def init(model: nn.Module, device: torch.device,
     return model
 
 
-def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
+def test(model: nn.Module, dataset: Dataset,
          device: torch.device = None, args: Arguments.parse.Namespace = None, **kwargs) \
-        -> None:
-    evaluator = Evaluator(n_class=dataset.num_classes)
+        -> Iterator[dict]:
+    loader = data.DataLoader(dataset, args.batch, num_workers=args.worker,
+                             shuffle=False, collate_fn=Dataset.collate, pin_memory=True)
+    evaluator = Evaluator(num_classes=dataset.num_classes, distribution=bool(args.distribution))
     dest = Path(args.dest)
+    result = {}
 
-    for index in tqdm(range(len(dataset))):
-        if not args.eval_only:
-            gt_boxes, labels = dataset.pull_anno(index)
+    with tqdm(total=len(dataset)) as tq:
+        for index, (images, targets) in enumerate(iter(loader)):
 
-        name = dataset.pull_name(index)
-        destination = Path(dest).joinpath(f'{name}.txt')
+            images = Variable(images.to(device), requires_grad=False)
+            targets = [Variable(target.to(device), requires_grad=False) for target in targets]
+            outputs = model(images)
 
-        try:
-            if args.overwrite:
-                raise AssertionError('Force overwrite enabled')
-            detection = pd.read_csv(str(destination), header=None).values
+            for batch_index, (output, target) in enumerate(zip(outputs, targets)):
+                name = dataset.pull_name(index * args.batch + batch_index)
+                destination = Path(dest).joinpath(f'{name}.txt')
+                detection = np.empty((0, 6), dtype=np.float32)
+                target = target.detach().cpu().numpy()
 
-        except (FileNotFoundError, AssertionError, pd.errors.EmptyDataError):
-            image = dataset.pull_image(index)
-            scale = torch.Tensor([image.shape[1], image.shape[0],
-                                  image.shape[1], image.shape[0]]).to(device)
+                for klass, boxes in enumerate(output):
+                    candidates = boxes[boxes[:, 0] >= args.thresh]
 
-            image = Variable(torch.from_numpy(transform(image)[0]).permute(2, 0, 1).unsqueeze(0)).to(device)
+                    if candidates.size(0) == 0:
+                        continue
 
-            detection = np.empty((0, 6), dtype=np.float32)
-            detections, *_ = model(image).data
+                    detection = np.concatenate((
+                        detection,
+                        np.hstack((
+                            np.full((np.size(candidates, 0), 1), klass, dtype=np.uint8),
+                            candidates.cpu().detach().numpy(),
+                        )),
+                    ))
 
-            for klass, boxes in enumerate(detections):
-                candidates = boxes[boxes[:, 0] >= args.thresh]
+                pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
 
-                if candidates.size(0) == 0:
-                    continue
+                if not args.eval_only:
+                    if not detection.size or not target.size:
+                        continue
 
-                candidates[:, 1:] *= scale
+                    evaluator.update((
+                        detection[:, 0].astype(np.int),
+                        detection[:, 1].astype(np.float32),
+                        detection[:, 2:].astype(np.float32),
+                        None,
+                    ), (
+                        target[:, -1].astype(np.int),
+                        target[:, :4].astype(np.float32),
+                        None,
+                    ))
 
-                detection = np.concatenate((
-                    detection,
-                    np.hstack((
-                        np.full((np.size(candidates, 0), 1), klass, dtype=np.uint8),
-                        candidates.cpu().detach().numpy(),
-                    )),
-                ))
+            tq.set_postfix(mAP=evaluator.mAP.mean())
+            tq.update(args.batch)
 
-            pd.DataFrame(detection).to_csv(str(destination), header=None, index=None)
+    if args.distribution:
+        from collections import Counter
+        import matplotlib.pyplot as plt
 
-        if not args.eval_only:
-            if not detection.size or not gt_boxes.size:
-                continue
+        dest = Path(args.distribution)
+        dest.mkdir(exist_ok=True, parents=True)
 
-            evaluator.update((
-                detection[:, 0].astype(np.int),
-                detection[:, 1].astype(np.float32),
-                detection[:, 2:].astype(np.float32),
-                None,
-            ), (
-                np.ones(np.size(gt_boxes, 0), dtype=np.int),
-                gt_boxes.astype(np.float32),
-                None,
-            ))
+        total_x, total_y = map(Counter, evaluator.center_total.T)
+        positive_x, positive_y = map(Counter, evaluator.center_positive.T)
+
+        div = lambda x, y: x / y if y else 0
+        points = np.array([(
+            key,
+            div(positive_x.get(key, 0), total_x.get(key, 0)),
+            div(positive_y.get(key, 0), total_y.get(key, 0)),
+        ) for key in range(100)])
+
+        plt.scatter(*points[:, (0, 1)].T)
+        plt.ylim(0., 1.)
+        plt.xlim(0, 100)
+        plt.savefig(str(dest.joinpath('x.jpg')), dpi=200)
+
+        plt.scatter(*points[:, (2, 0)].T)
+        plt.xlim(0., 1.)
+        plt.ylim(0, 100)
+        plt.savefig(str(dest.joinpath('y.jpg')), dpi=200)
 
     if not args.eval_only:
         aps, precisions, recalls = [], [], []
@@ -123,10 +149,13 @@ def test(model: nn.Module, dataset: Dataset, transform: Augmentation,
         print(f'Ground Truths: {gt_counts} / Predictions: {pd_counts}')
 
         with open(str(dest.joinpath('results.json')), 'w') as f:
-            json.dump({
+            result.update({
                 'mAP': float(np.mean(aps)),
                 'Precision': float(np.mean(precisions)),
                 'Recall': float(np.mean(recalls)),
                 'GT': int(gt_counts),
                 'PD': int(pd_counts),
-            }, f)
+            })
+            json.dump(result, f)
+
+    yield result

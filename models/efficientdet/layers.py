@@ -812,4 +812,3 @@ def load_pretrained_weights(model, model_name, load_fc=True):
         res = model.load_state_dict(state_dict, strict=False)
         assert set(res.missing_keys) == set(
             ['_fc.weight', '_fc.bias']), 'issue loading pretrained weights'
-    print('Loaded pretrained weights for {}'.format(model_name))

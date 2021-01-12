@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union, Any
 import types
 
 import cv2
@@ -75,6 +75,15 @@ class ConvertFromInts(object):
         return image.astype(np.float32), boxes, labels
 
 
+class Normalize(object):
+    def __init__(self, mean, std):
+        self.mean = np.array(mean, dtype=np.float32)
+        self.std = np.array(std, dtype=np.float32)
+
+    def __call__(self, image, boxes=None, labels=None):
+        return (image.astype(np.float32) - self.mean) / self.std, boxes, labels
+
+
 class SubtractMeans(object):
     def __init__(self, mean):
         self.mean = np.array(mean, dtype=np.float32)
@@ -99,20 +108,47 @@ class ToAbsoluteCoords(object):
 class ToPercentCoords(object):
     def __call__(self, image, boxes=None, labels=None):
         height, width, channels = image.shape
-        boxes[:, 0] /= width
-        boxes[:, 2] /= width
-        boxes[:, 1] /= height
-        boxes[:, 3] /= height
+
+        if boxes is not None:
+            boxes[:, 0] /= width
+            boxes[:, 2] /= width
+            boxes[:, 1] /= height
+            boxes[:, 3] /= height
 
         return image, boxes, labels
 
 
 class Resize(object):
-    def __init__(self, size=(300, 300)):
-        self.size = size
+    def __init__(self, size: Tuple[int, int] = (300, 300),
+                 aspect: bool = False, box: bool = False):
+        self.size = np.array(size)
+        self.aspect = aspect
+        self.box = box
 
     def __call__(self, image, boxes=None, labels=None):
-        image = cv2.resize(image, self.size)
+        image_size = np.array(image.shape[:2])
+        if not np.all(self.size == image_size):
+            if self.aspect:
+                scale = max(image_size / self.size[::-1])
+                nh, nw = (image_size / scale).astype(np.int)
+                dx, dy = (self.size - (nw, nh)) / 2
+                ratio = image_size / (nh, nw)
+
+                canvas = np.zeros((*self.size[::-1], 3), dtype=np.float32)
+                canvas[int(dy):int(dy + nh), int(dx):int(dx + nw)] = cv2.resize(image, (nw, nh))
+                image = canvas
+
+            else:
+                ratio = image_size / self.size
+                image = cv2.resize(image, tuple(self.size))
+
+            if self.box:
+                boxes /= np.tile(ratio, 2)
+
+                if self.aspect:
+                    boxes[:, ::2] += dx
+                    boxes[:, 1::2] += dy
+
         return image, boxes, labels
 
 
@@ -413,65 +449,52 @@ class PhotometricDistort(object):
 
 
 class Augmentation(metaclass=Beholder):
-    def __call__(self):
-        pass
+    def __init__(self):
+        self.training = True
+        self.augment = {
+            'train': lambda *_: None,
+            'test': lambda *_: None,
+        }
 
+    def eval(self):
+        return self.train(False)
 
-class SSD(Augmentation):
-    def __init__(self, size=300, mean=(104, 117, 123)):
-        self.mean = mean
-        self.size = size
-        self.augment = Compose([
-            ConvertFromInts(),
-            ToAbsoluteCoords(),
-            PhotometricDistort(),
-            Expand(self.mean),
-            RandomSampleCrop(),
-            RandomMirror(),
-            ToPercentCoords(),
-            Resize(self.size),
-            SubtractMeans(self.mean)
-        ])
+    def train(self, mode: bool = True):
+        self.training = mode
+        return self
 
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
+    def __call__(self, img: Union[np.ndarray, torch.Tensor], boxes=None, labels=None) \
+            -> Tuple[Union[np.ndarray, torch.Tensor], Any, Any]:
 
+        if isinstance(self.augment, dict):
+            augment = self.augment.get('train' if self.training else 'test')
+        elif isinstance(self.augment, Compose):
+            augment = self.augment
 
-class Base(Augmentation):
-    def __init__(self, size: Tuple[int, int] = (300, 300),
-                 mean: Tuple[float, float, float] = (104, 117, 123),
-                 **kwargs):
-        self.size = tuple(size)
-        self.mean = np.array(mean, dtype=np.float32)
-
-    def __call__(self, image: np.ndarray, boxes=None, labels=None):
-        image = cv2.resize(image, self.size).astype(np.float32)
-        image -= self.mean
-        image = image.astype(np.float32)
-
-        return image, boxes, labels
+        return augment(img, boxes, labels)
 
 
 class Amano(Augmentation):
     def __init__(self, size: Tuple[int, int] = (300, 300),
                  mean: Tuple[float, float, float] = (111, 113, 110),
+                 horizontal: bool = True, vertical: bool = True,
                  **kwargs):
         self.mean = mean
         self.size = size
-        self.augment = Compose([
-            ConvertFromInts(),
-            ToAbsoluteCoords(),
-            # PhotometricDistort(),
-            # Expand(self.mean),
-            # RandomSampleCrop(),
-            RandomMirror(),
-            ToPercentCoords(),
-            Resize(self.size),
-            SubtractMeans(self.mean)
-        ])
-
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
+        self.augment = {
+            'train': Compose([
+                ConvertFromInts(),
+                PhotometricDistort(),
+                RandomMirror(horizontal=horizontal, vertical=vertical),
+                ToPercentCoords(),
+                Resize(self.size),
+                SubtractMeans(self.mean)
+            ]), 'test': Compose([
+                ToPercentCoords(),
+                Resize(self.size),
+                SubtractMeans(self.mean)
+            ])
+        }
 
 
 class Detection(Augmentation):
@@ -481,23 +504,44 @@ class Detection(Augmentation):
                  **kwargs):
         self.mean = mean
         self.size = size
-        self.augment = Compose([
-            ConvertFromInts(),
-            ToAbsoluteCoords(),
-            # PhotometricDistort(),
-            # Expand(self.mean),
-            # RandomSampleCrop(),
-            RandomMirror(horizontal=horizontal, vertical=vertical),
-            ToPercentCoords(),
-            Resize(self.size),
-            SubtractMeans(self.mean)
-        ])
+        self.augment = {
+            'train': Compose([
+                ConvertFromInts(),
+                PhotometricDistort(),
+                RandomMirror(horizontal=horizontal, vertical=vertical),
+                ToPercentCoords(),
+                Resize(self.size),
+                SubtractMeans(self.mean),
+            ]), 'test': Compose([
+                ToPercentCoords(),
+                Resize(self.size),
+                SubtractMeans(self.mean),
+            ])
+        }
 
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
+
+class EfficientDet(Augmentation):
+    def __init__(self, size: Tuple[int, int] = (512, 512),
+                 mean: Tuple[float, float, float] = (.485, .456, .406),
+                 std: Tuple[float, float, float] = (.229, .224, .225),
+                 horizontal: bool = True, vertical: bool = True,
+                 **kwargs):
+        self.size = size
+        self.mean = mean
+        self.std = std
+        self.augment = {
+            'train': Compose([
+                RandomMirror(horizontal=horizontal, vertical=vertical),
+                Resize(self.size, aspect=True, box=True),
+                Normalize(self.mean, self.std),
+            ]), 'test': Compose([
+                Resize(self.size, aspect=True, box=True),
+                Normalize(self.mean, self.std),
+            ])
+        }
 
 
-class VOC(Augmentation):
+class COCO(Augmentation):
     def __init__(self, size: Tuple[int, int] = (300, 300),
                  mean: Tuple[float, float, float] = (123, 117, 104), std: float = 1.,
                  **kwargs):
@@ -515,5 +559,21 @@ class VOC(Augmentation):
             lambda img, boxes=None, labels=None: (img / std, boxes, labels),
         ])
 
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
+
+class VOC(Augmentation):
+    def __init__(self, size: Tuple[int, int] = (300, 300),
+                 mean: Tuple[float, float, float] = (123, 117, 104), std: float = 1.,
+                 **kwargs):
+        self.mean = mean
+        self.size = size
+        self.augment = Compose([
+            # ConvertFromInts(),
+            # PhotometricDistort(),
+            # Expand(self.mean),
+            # RandomSampleCrop(),
+            # RandomMirror(),
+            ToPercentCoords(),
+            Resize(self.size),
+            SubtractMeans(self.mean),
+            lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+        ])

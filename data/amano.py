@@ -5,13 +5,15 @@ import numpy as np
 import pandas as pd
 import skimage
 import torch
-import torch.utils.data as data
 
 from data import Dataset
 
 
-class Amano(data.Dataset, Dataset):
+class Amano(Dataset):
+    class_id = 1
     num_classes = 2
+    class_names = ('BACKGROUND',
+                   'Object')
 
     IMAGE_DIR = 'images'
     IMAGE_EXT = '.jpg'
@@ -24,21 +26,6 @@ class Amano(data.Dataset, Dataset):
         'f': [998.4, 998.4],
         'c': [1997, 1473],
         'k': [0.0711, -0.0715, 0, 0, 0],
-    }
-
-    cfg = {
-        'num_classes': 2,
-        'lr_steps': (80000, 100000, 120000),
-        'max_iter': 120000,
-        'feature_maps': [38, 19, 10, 5, 3, 1],
-        'min_dim': 300,
-        'steps': [8, 16, 32, 64, 100, 300],
-        'min_sizes': [30, 60, 111, 162, 213, 264],
-        'max_sizes': [60, 111, 162, 213, 264, 315],
-        'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
-        'variance': [0.1, 0.2],
-        'clip': True,
-        'name': 'AMANO',
     }
 
     def __init__(self, root,
@@ -54,7 +41,7 @@ class Amano(data.Dataset, Dataset):
         self.target_transform = target_transform or self.target_trans
         self.eval_only = eval_only
         self.max_step = max_step
-        self.front_only = True
+        self.front_only = False
         self.fail_id = set()
 
         if eval_only:
@@ -66,15 +53,15 @@ class Amano(data.Dataset, Dataset):
             assert len(self.images) == len(self.detections), \
                 "Image and Detections mismatch"
 
+        self.shape = self.pull_image(0).shape
+
     @staticmethod
     def target_trans(boxes, width, height):
-        boxes[:, 1::2] /= height
-        boxes[:, :4:2] /= width
-
         return boxes
 
     def __getitem__(self, index):
         item = self.pull_item(index)
+
         return item
 
     def __len__(self):
@@ -95,7 +82,7 @@ class Amano(data.Dataset, Dataset):
             image = self.pull_image(idx)
             height, width, channels = image.shape
 
-            if self.eval_only is None:
+            if self.eval_only:
                 uniques = np.arange(0)
                 boxes = np.empty((uniques.size, 4))
                 labels = np.empty((uniques.size, 1))
@@ -167,7 +154,7 @@ class Amano(data.Dataset, Dataset):
                 np.expand_dims(np.array([l, t, r, b]), 0)
             ))
 
-        return annotations, np.zeros(np.size(annotations, 0), dtype=np.uint8)
+        return annotations, np.ones(np.size(annotations, 0), dtype=np.uint8)
 
     @classmethod
     def ray2pix(cls, ray):

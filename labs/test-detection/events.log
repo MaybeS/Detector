@@ -1,0 +1,192 @@
+Detector INFO    : ================================== Arguments ===================================
+Detector INFO    : 'command'       : 'test'
+Detector INFO    : 'eval_only'     : True
+Detector INFO    : 'overwrite'     : False
+Detector INFO    : 'distribution'  : ''
+Detector INFO    : 'batch'         : 32
+Detector INFO    : 'lr'            : 0.001
+Detector INFO    : 'momentum'      : 0.9
+Detector INFO    : 'decay'         : 0.0005
+Detector INFO    : 'epoch'         : 100000
+Detector INFO    : 'start_epoch'   : 0
+Detector INFO    : 'save_epoch'    : 10000
+Detector INFO    : 'worker'        : 4
+Detector INFO    : 'warping'       : 'none'
+Detector INFO    : 'warping_mode'  : 'sum'
+Detector INFO    : 'format'        : 'torch'
+Detector INFO    : 'unlabeled'     : ''
+Detector INFO    : 'unlabeled_gt'  : ''
+Detector INFO    : 'pseudo_step'   : 10
+Detector INFO    : 'pseudo_first_step': 0
+Detector INFO    : 'name'          : 'SSD300'
+Detector INFO    : 'seed'          : 42
+Detector INFO    : 'backbone'      : 'VGG16'
+Detector INFO    : 'type'          : 'DETECTION'
+Detector INFO    : 'dataset'       : '/home/jiun/workspace/SSD/labs/test-results'
+Detector INFO    : 'dest'          : '/home/jiun/workspace/SSD/labs/test-detection'
+Detector INFO    : 'config'        : None
+Detector INFO    : 'classes'       : 0
+Detector INFO    : 'model'         : '/home/jiun/datasets/weights/cylinder/ssd-vgg16/SSD300-100000.pth'
+Detector INFO    : 'thresh'        : 0.3
+Detector INFO    : 'log_level'     : 'WARNING'
+Detector INFO    : ==================================== Config ====================================
+Detector INFO    : 'aspect_ratios' : [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+Detector INFO    : 'clip'          : True
+Detector INFO    : 'feature_map_x' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'feature_map_y' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'max_sizes'     : [45, 99, 153, 207, 261, 315]
+Detector INFO    : 'min_sizes'     : [21, 45, 99, 153, 207, 261]
+Detector INFO    : 'num_priors'    : 6
+Detector INFO    : 'optimizer'     : {'lr': 0.001, 'momentum': 0.9, 'weight_decay': 0.0005}
+Detector INFO    : 'scheduler'     : {'factor': 0.1, 'patience': 3}
+Detector INFO    : 'size'          : (300, 300)
+Detector INFO    : 'steps'         : [8, 16, 32, 64, 100, 300]
+Detector INFO    : 'variance'      : [0.1, 0.2]
+Detector INFO    : Model initializing ...
+Detector INFO    : Model initialized
+Detector INFO    : Model execute test
+Detector INFO    : Model execution done!
+Detector INFO    : ================================== Arguments ===================================
+Detector INFO    : 'command'       : 'test'
+Detector INFO    : 'eval_only'     : True
+Detector INFO    : 'overwrite'     : False
+Detector INFO    : 'distribution'  : ''
+Detector INFO    : 'batch'         : 32
+Detector INFO    : 'lr'            : 0.001
+Detector INFO    : 'momentum'      : 0.9
+Detector INFO    : 'decay'         : 0.0005
+Detector INFO    : 'epoch'         : 100000
+Detector INFO    : 'start_epoch'   : 0
+Detector INFO    : 'save_epoch'    : 10000
+Detector INFO    : 'worker'        : 4
+Detector INFO    : 'warping'       : 'none'
+Detector INFO    : 'warping_mode'  : 'sum'
+Detector INFO    : 'format'        : 'torch'
+Detector INFO    : 'unlabeled'     : ''
+Detector INFO    : 'unlabeled_gt'  : ''
+Detector INFO    : 'pseudo_step'   : 10
+Detector INFO    : 'pseudo_first_step': 0
+Detector INFO    : 'name'          : 'SSD300'
+Detector INFO    : 'seed'          : 42
+Detector INFO    : 'backbone'      : 'VGG16'
+Detector INFO    : 'type'          : 'DETECTION'
+Detector INFO    : 'dataset'       : '/home/jiun/workspace/SSD/labs/test-results'
+Detector INFO    : 'dest'          : '/home/jiun/workspace/SSD/labs/test-detection'
+Detector INFO    : 'config'        : None
+Detector INFO    : 'classes'       : 0
+Detector INFO    : 'model'         : '/home/jiun/datasets/weights/cylinder/ssd-vgg16/SSD300-100000.pth'
+Detector INFO    : 'thresh'        : 0.1
+Detector INFO    : 'log_level'     : 'WARNING'
+Detector INFO    : ==================================== Config ====================================
+Detector INFO    : 'aspect_ratios' : [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+Detector INFO    : 'clip'          : True
+Detector INFO    : 'feature_map_x' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'feature_map_y' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'max_sizes'     : [45, 99, 153, 207, 261, 315]
+Detector INFO    : 'min_sizes'     : [21, 45, 99, 153, 207, 261]
+Detector INFO    : 'num_priors'    : 6
+Detector INFO    : 'optimizer'     : {'lr': 0.001, 'momentum': 0.9, 'weight_decay': 0.0005}
+Detector INFO    : 'scheduler'     : {'factor': 0.1, 'patience': 3}
+Detector INFO    : 'size'          : (300, 300)
+Detector INFO    : 'steps'         : [8, 16, 32, 64, 100, 300]
+Detector INFO    : 'variance'      : [0.1, 0.2]
+Detector INFO    : Model initializing ...
+Detector INFO    : Model initialized
+Detector INFO    : Model execute test
+Detector INFO    : Model execution done!
+Detector INFO    : ================================== Arguments ===================================
+Detector INFO    : 'command'       : 'test'
+Detector INFO    : 'eval_only'     : True
+Detector INFO    : 'overwrite'     : False
+Detector INFO    : 'distribution'  : ''
+Detector INFO    : 'batch'         : 32
+Detector INFO    : 'lr'            : 0.001
+Detector INFO    : 'momentum'      : 0.9
+Detector INFO    : 'decay'         : 0.0005
+Detector INFO    : 'epoch'         : 100000
+Detector INFO    : 'start_epoch'   : 0
+Detector INFO    : 'save_epoch'    : 10000
+Detector INFO    : 'worker'        : 4
+Detector INFO    : 'warping'       : 'none'
+Detector INFO    : 'warping_mode'  : 'sum'
+Detector INFO    : 'format'        : 'torch'
+Detector INFO    : 'unlabeled'     : ''
+Detector INFO    : 'unlabeled_gt'  : ''
+Detector INFO    : 'pseudo_step'   : 10
+Detector INFO    : 'pseudo_first_step': 0
+Detector INFO    : 'name'          : 'SSD300'
+Detector INFO    : 'seed'          : 42
+Detector INFO    : 'backbone'      : 'VGG16'
+Detector INFO    : 'type'          : 'DETECTION'
+Detector INFO    : 'dataset'       : '/home/jiun/workspace/SSD/labs/test-results'
+Detector INFO    : 'dest'          : '/home/jiun/workspace/SSD/labs/test-detection'
+Detector INFO    : 'config'        : None
+Detector INFO    : 'classes'       : 0
+Detector INFO    : 'model'         : '/home/jiun/datasets/weights/cylinder/ssd-vgg16/SSD300-100000.pth'
+Detector INFO    : 'thresh'        : 0.5
+Detector INFO    : 'log_level'     : 'WARNING'
+Detector INFO    : ==================================== Config ====================================
+Detector INFO    : 'aspect_ratios' : [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+Detector INFO    : 'clip'          : True
+Detector INFO    : 'feature_map_x' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'feature_map_y' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'max_sizes'     : [45, 99, 153, 207, 261, 315]
+Detector INFO    : 'min_sizes'     : [21, 45, 99, 153, 207, 261]
+Detector INFO    : 'num_priors'    : 6
+Detector INFO    : 'optimizer'     : {'lr': 0.001, 'momentum': 0.9, 'weight_decay': 0.0005}
+Detector INFO    : 'scheduler'     : {'factor': 0.1, 'patience': 3}
+Detector INFO    : 'size'          : (300, 300)
+Detector INFO    : 'steps'         : [8, 16, 32, 64, 100, 300]
+Detector INFO    : 'variance'      : [0.1, 0.2]
+Detector INFO    : Model initializing ...
+Detector INFO    : Model initialized
+Detector INFO    : Model execute test
+Detector INFO    : Model execution done!
+Detector INFO    : ================================== Arguments ===================================
+Detector INFO    : 'command'       : 'test'
+Detector INFO    : 'eval_only'     : True
+Detector INFO    : 'overwrite'     : False
+Detector INFO    : 'distribution'  : ''
+Detector INFO    : 'batch'         : 32
+Detector INFO    : 'lr'            : 0.001
+Detector INFO    : 'momentum'      : 0.9
+Detector INFO    : 'decay'         : 0.0005
+Detector INFO    : 'epoch'         : 100000
+Detector INFO    : 'start_epoch'   : 0
+Detector INFO    : 'save_epoch'    : 10000
+Detector INFO    : 'worker'        : 4
+Detector INFO    : 'warping'       : 'none'
+Detector INFO    : 'warping_mode'  : 'sum'
+Detector INFO    : 'format'        : 'torch'
+Detector INFO    : 'unlabeled'     : ''
+Detector INFO    : 'unlabeled_gt'  : ''
+Detector INFO    : 'pseudo_step'   : 10
+Detector INFO    : 'pseudo_first_step': 0
+Detector INFO    : 'name'          : 'SSD300'
+Detector INFO    : 'seed'          : 42
+Detector INFO    : 'backbone'      : 'VGG16'
+Detector INFO    : 'type'          : 'DETECTION'
+Detector INFO    : 'dataset'       : '/home/jiun/workspace/SSD/labs/test-results'
+Detector INFO    : 'dest'          : '/home/jiun/workspace/SSD/labs/test-detection'
+Detector INFO    : 'config'        : None
+Detector INFO    : 'classes'       : 0
+Detector INFO    : 'model'         : '/home/jiun/datasets/weights/cylinder/ssd-vgg16/SSD300-100000.pth'
+Detector INFO    : 'thresh'        : 0.3
+Detector INFO    : 'log_level'     : 'WARNING'
+Detector INFO    : ==================================== Config ====================================
+Detector INFO    : 'aspect_ratios' : [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+Detector INFO    : 'clip'          : True
+Detector INFO    : 'feature_map_x' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'feature_map_y' : [38, 19, 10, 5, 3, 1]
+Detector INFO    : 'max_sizes'     : [45, 99, 153, 207, 261, 315]
+Detector INFO    : 'min_sizes'     : [21, 45, 99, 153, 207, 261]
+Detector INFO    : 'num_priors'    : 6
+Detector INFO    : 'optimizer'     : {'lr': 0.001, 'momentum': 0.9, 'weight_decay': 0.0005}
+Detector INFO    : 'scheduler'     : {'factor': 0.1, 'patience': 3}
+Detector INFO    : 'size'          : (300, 300)
+Detector INFO    : 'steps'         : [8, 16, 32, 64, 100, 300]
+Detector INFO    : 'variance'      : [0.1, 0.2]
+Detector INFO    : Model initializing ...
+Detector INFO    : Model initialized
+Detector INFO    : Model execute test
+Detector INFO    : Model execution done!
